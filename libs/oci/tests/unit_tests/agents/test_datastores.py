@@ -1,0 +1,388 @@
+# Copyright (c) 2026 Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
+
+"""Unit tests for datastores and datastore tools."""
+
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+
+@pytest.mark.requires("oci")
+class TestVectorDataStore:
+    """Tests for VectorDataStore abstract base class."""
+
+    def test_is_abstract(self) -> None:
+        """Test that VectorDataStore cannot be instantiated directly."""
+        from langchain_oci.agents.datastores.vectorstores import VectorDataStore
+
+        with pytest.raises(TypeError, match="abstract"):
+            VectorDataStore()  # type: ignore[abstract]
+
+    def test_has_required_methods(self) -> None:
+        """Test that VectorDataStore defines required abstract methods."""
+        import inspect
+
+        from langchain_oci.agents.datastores.vectorstores import VectorDataStore
+
+        abstract_methods = {
+            name
+            for name, method in inspect.getmembers(VectorDataStore)
+            if getattr(method, "__isabstractmethod__", False)
+        }
+
+        expected = {
+            "name",
+            "connect",
+            "search",
+            "keyword_search",
+            "get",
+            "insert",
+            "bulk_insert",
+            "update",
+            "delete",
+            "stats",
+        }
+        assert expected.issubset(abstract_methods)
+
+    def test_hint_property_has_default(self) -> None:
+        """Test that hint property returns empty string by default."""
+        from langchain_oci.agents.datastores.vectorstores import VectorDataStore
+
+        # Create a concrete implementation for testing
+        class ConcreteStore(VectorDataStore):
+            @property
+            def name(self) -> str:
+                return "test"
+
+            def connect(self, embedding_model):
+                pass
+
+            def search(self, query, embedding, top_k):
+                return []
+
+            def keyword_search(self, query, top_k):
+                return []
+
+            def get(self, document_id):
+                return None
+
+            def insert(self, title, content, source, embedding):
+                return "1"
+
+            def bulk_insert(self, documents, embeddings):
+                return len(documents)
+
+            def update(self, document_id, title, content, source, embedding):
+                return True
+
+            def delete(self, document_id):
+                return True
+
+            def stats(self):
+                return {}
+
+        store = ConcreteStore()
+        assert store.hint == ""
+
+
+@pytest.mark.requires("oci")
+class TestOpenSearchDataStore:
+    """Tests for OpenSearch datastore."""
+
+    def test_initialization(self) -> None:
+        """Test OpenSearch datastore can be initialized."""
+        from langchain_oci.agents.datastores.vectorstores import OpenSearch
+
+        store = OpenSearch(
+            endpoint="https://localhost:9200",
+            index_name="test-index",
+            username="admin",
+            password="admin",
+            hint="test documents",
+        )
+
+        assert store.endpoint == "https://localhost:9200"
+        assert store.index_name == "test-index"
+        assert store.username == "admin"
+        assert store.name == "opensearch"
+        assert store.hint == "test documents"
+
+    def test_connect_requires_opensearchpy(self) -> None:
+        """Test that connect raises ImportError if opensearch-py not installed."""
+        from langchain_oci.agents.datastores.vectorstores import OpenSearch
+
+        store = OpenSearch(
+            endpoint="https://localhost:9200",
+            index_name="test-index",
+        )
+
+        with patch.dict("sys.modules", {"opensearchpy": None}):
+            with pytest.raises(ImportError, match="opensearch-py required"):
+                store.connect(MagicMock())
+
+    def test_default_values(self) -> None:
+        """Test OpenSearch has sensible defaults."""
+        from langchain_oci.agents.datastores.vectorstores import OpenSearch
+
+        store = OpenSearch(
+            endpoint="https://localhost:9200",
+            index_name="test-index",
+        )
+
+        assert store.use_ssl is True
+        assert store.verify_certs is True
+        assert store.vector_field == "embedding"
+        assert store.search_fields == ["title", "content"]
+
+
+@pytest.mark.requires("oci")
+class TestADBDataStore:
+    """Tests for Oracle ADB datastore."""
+
+    def test_initialization(self) -> None:
+        """Test ADB datastore can be initialized."""
+        from langchain_oci.agents.datastores.vectorstores import ADB
+
+        store = ADB(
+            dsn="mydb_low",
+            user="ADMIN",
+            password="password123",
+            wallet_location="~/.oracle-wallet",
+            table_name="MY_VECTORS",
+            hint="sales data",
+        )
+
+        assert store.dsn == "mydb_low"
+        assert store.user == "ADMIN"
+        assert store.table_name == "MY_VECTORS"
+        assert store.name == "adb"
+        assert store.hint == "sales data"
+
+    def test_connect_requires_oracledb(self) -> None:
+        """Test that connect raises ImportError if oracledb not installed."""
+        from langchain_oci.agents.datastores.vectorstores import ADB
+
+        store = ADB(
+            dsn="mydb_low",
+            user="ADMIN",
+            password="password",
+        )
+
+        with patch.dict("sys.modules", {"oracledb": None}):
+            with pytest.raises(ImportError, match="oracledb required"):
+                store.connect(MagicMock())
+
+    def test_default_values(self) -> None:
+        """Test ADB has sensible defaults."""
+        from langchain_oci.agents.datastores.vectorstores import ADB
+
+        store = ADB(
+            dsn="mydb_low",
+            user="ADMIN",
+            password="password",
+        )
+
+        assert store.table_name == "VECTOR_DOCUMENTS"
+        assert store.wallet_location is None
+        assert store.wallet_password is None
+
+
+@pytest.mark.requires("oci")
+class TestStoreSelector:
+    """Tests for StoreSelector routing logic."""
+
+    def test_single_store_routing(self) -> None:
+        """Test that single store always routes to itself."""
+        from langchain_oci.agents.datastores.tools import StoreSelector
+
+        mock_embedding = MagicMock()
+        mock_embedding.embed_query.return_value = [0.1] * 1024
+
+        mock_store = MagicMock()
+        mock_store.hint = "test"
+
+        selector = StoreSelector(
+            stores={"only_store": mock_store},
+            embedding_model=mock_embedding,
+            default_store="only_store",
+        )
+
+        assert selector.route("any query") == "only_store"
+
+    def test_multi_store_routing(self) -> None:
+        """Test routing between multiple stores."""
+        from langchain_oci.agents.datastores.tools import StoreSelector
+
+        mock_embedding = MagicMock()
+        # Return different embeddings for different queries
+        mock_embedding.embed_query.side_effect = lambda q: (
+            [1.0, 0.0, 0.0] if "hr" in q.lower() else [0.0, 1.0, 0.0]
+        )
+
+        hr_store = MagicMock()
+        hr_store.hint = "HR policies, employee benefits"
+
+        sales_store = MagicMock()
+        sales_store.hint = "sales data, revenue"
+
+        selector = StoreSelector(
+            stores={"hr": hr_store, "sales": sales_store},
+            embedding_model=mock_embedding,
+            default_store="hr",
+        )
+
+        # The selector pre-computes hint embeddings
+        assert "hr" in selector.stores
+        assert "sales" in selector.stores
+
+
+@pytest.mark.requires("oci")
+class TestCreateDatastoreTools:
+    """Tests for create_datastore_tools factory function."""
+
+    def test_raises_without_stores(self) -> None:
+        """Test that empty stores raises ValueError."""
+        from langchain_oci.agents.datastores.tools import create_datastore_tools
+
+        with pytest.raises(ValueError, match="At least one datastore"):
+            create_datastore_tools(stores={})
+
+    def test_raises_invalid_default_store(self) -> None:
+        """Test that invalid default_store raises ValueError."""
+        from langchain_oci.agents.datastores.tools import create_datastore_tools
+
+        mock_store = MagicMock()
+        mock_store.hint = "test"
+
+        with pytest.raises(ValueError, match="not found"):
+            create_datastore_tools(
+                stores={"store1": mock_store},
+                default_store="nonexistent",
+            )
+
+    def test_requires_compartment_id_for_default_embeddings(self) -> None:
+        """Test that compartment_id is required when using default embeddings."""
+        from langchain_oci.agents.datastores.tools import create_datastore_tools
+
+        mock_store = MagicMock()
+        mock_store.hint = "test"
+
+        with patch.dict("os.environ", {}, clear=True):
+            with pytest.raises(ValueError, match="compartment_id is required"):
+                create_datastore_tools(stores={"store1": mock_store})
+
+    def test_creates_four_tools(self) -> None:
+        """Test that factory creates all four datastore tools."""
+        from langchain_oci.agents.datastores.tools import create_datastore_tools
+
+        mock_store = MagicMock()
+        mock_store.hint = "test"
+
+        mock_embedding = MagicMock()
+        mock_embedding.embed_query.return_value = [0.1] * 1024
+
+        tools = create_datastore_tools(
+            stores={"test": mock_store},
+            embedding_model=mock_embedding,
+        )
+
+        assert len(tools) == 4
+        tool_names = {t.name for t in tools}
+        assert tool_names == {"search", "keyword_search", "get_document", "stats"}
+
+    def test_tools_have_descriptions(self) -> None:
+        """Test that all tools have descriptions."""
+        from langchain_oci.agents.datastores.tools import create_datastore_tools
+
+        mock_store = MagicMock()
+        mock_store.hint = "test documents"
+
+        mock_embedding = MagicMock()
+        mock_embedding.embed_query.return_value = [0.1] * 1024
+
+        tools = create_datastore_tools(
+            stores={"test": mock_store},
+            embedding_model=mock_embedding,
+        )
+
+        for tool in tools:
+            assert tool.description, f"Tool {tool.name} should have a description"
+
+    def test_accepts_custom_top_k(self) -> None:
+        """Test that custom top_k is passed to search tools."""
+        from langchain_oci.agents.datastores.tools import create_datastore_tools
+
+        mock_store = MagicMock()
+        mock_store.hint = "test"
+
+        mock_embedding = MagicMock()
+        mock_embedding.embed_query.return_value = [0.1] * 1024
+
+        tools = create_datastore_tools(
+            stores={"test": mock_store},
+            embedding_model=mock_embedding,
+            top_k=20,
+        )
+
+        search_tool = next(t for t in tools if t.name == "search")
+        assert getattr(search_tool, "top_k") == 20
+
+
+@pytest.mark.requires("oci")
+class TestDatastoreImports:
+    """Tests for datastore imports from various paths."""
+
+    def test_import_from_agents(self) -> None:
+        """Test imports from langchain_oci.agents."""
+        from langchain_oci.agents import (
+            ADB,
+            OpenSearch,
+            VectorDataStore,
+            create_datastore_tools,
+        )
+
+        assert VectorDataStore is not None
+        assert OpenSearch is not None
+        assert ADB is not None
+        assert create_datastore_tools is not None
+
+    def test_import_from_datastores(self) -> None:
+        """Test imports from langchain_oci.agents.datastores."""
+        from langchain_oci.agents.datastores import (
+            ADB,
+            OpenSearch,
+            VectorDataStore,
+            create_datastore_tools,
+        )
+
+        assert VectorDataStore is not None
+        assert OpenSearch is not None
+        assert ADB is not None
+        assert create_datastore_tools is not None
+
+    def test_import_from_vectorstores(self) -> None:
+        """Test imports from langchain_oci.agents.datastores.vectorstores."""
+        from langchain_oci.agents.datastores.vectorstores import (
+            ADB,
+            OpenSearch,
+            VectorDataStore,
+        )
+
+        assert VectorDataStore is not None
+        assert OpenSearch is not None
+        assert ADB is not None
+
+    def test_import_from_top_level(self) -> None:
+        """Test imports from langchain_oci top level."""
+        from langchain_oci import (
+            ADB,
+            OpenSearch,
+            VectorDataStore,
+            create_datastore_tools,
+        )
+
+        assert VectorDataStore is not None
+        assert OpenSearch is not None
+        assert ADB is not None
+        assert create_datastore_tools is not None
