@@ -27,12 +27,39 @@ def _snake_to_camel(name: str) -> str:
     return components[0] + "".join(x.title() for x in components[1:])
 
 
-def _convert_keys_to_camel(obj: Any) -> Any:
-    """Recursively convert dict keys from snake_case to camelCase."""
+# Keys that contain user-defined JSON Schema and should NOT have nested keys converted
+_JSON_SCHEMA_KEYS = frozenset(
+    {"parameters", "properties", "items", "additionalProperties"}
+)
+
+
+def _convert_keys_to_camel(obj: Any, _skip_nested: bool = False) -> Any:
+    """Recursively convert dict keys from snake_case to camelCase.
+
+    Args:
+        obj: The object to convert.
+        _skip_nested: Internal flag to skip key conversion for nested structures
+            (used for JSON Schema content inside tool definitions).
+
+    Note:
+        Tool 'parameters' fields contain JSON Schema where property names are
+        user-defined (e.g., 'tool_call_id' as a parameter name). These should
+        NOT be converted to camelCase, only the OCI API field names should be.
+    """
     if isinstance(obj, dict):
-        return {_snake_to_camel(k): _convert_keys_to_camel(v) for k, v in obj.items()}
+        result = {}
+        for k, v in obj.items():
+            # Convert the key unless we're inside a JSON Schema structure
+            new_key = k if _skip_nested else _snake_to_camel(k)
+
+            # Check if this key's value should skip nested conversion
+            # (JSON Schema content should preserve original property names)
+            skip_for_children = _skip_nested or k in _JSON_SCHEMA_KEYS
+
+            result[new_key] = _convert_keys_to_camel(v, _skip_nested=skip_for_children)
+        return result
     elif isinstance(obj, list):
-        return [_convert_keys_to_camel(item) for item in obj]
+        return [_convert_keys_to_camel(item, _skip_nested=_skip_nested) for item in obj]
     return obj
 
 

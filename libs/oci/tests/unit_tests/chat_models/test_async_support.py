@@ -408,6 +408,77 @@ class TestAsyncSupportHelpers:
         assert _convert_keys_to_camel(None) is None
         assert _convert_keys_to_camel(True) is True
 
+    def test_convert_keys_to_camel_preserves_json_schema_properties(self):
+        """Test that JSON Schema property names are preserved (not converted).
+
+        Tool 'parameters' fields contain JSON Schema where property names are
+        user-defined (e.g., 'tool_call_id' as a parameter name). These should
+        NOT be converted to camelCase.
+        """
+        from langchain_oci.common.async_support import _convert_keys_to_camel
+
+        tool_with_snake_case_params = {
+            "type": "FUNCTION",
+            "name": "write_todos",
+            "description": "Write todos",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "todos": {"type": "array"},
+                    "tool_call_id": {"type": "string", "title": "Tool Call Id"},
+                },
+                "required": ["todos", "tool_call_id"],
+            },
+        }
+
+        result = _convert_keys_to_camel(tool_with_snake_case_params)
+
+        # Top-level API keys should be converted (but these happen to be single words)
+        assert "type" in result
+        assert "name" in result
+        assert "parameters" in result
+
+        # Property names inside 'parameters' should NOT be converted
+        assert "tool_call_id" in result["parameters"]["properties"]
+        assert "toolCallId" not in result["parameters"]["properties"]
+
+        # Required array values should remain unchanged
+        assert "tool_call_id" in result["parameters"]["required"]
+
+    def test_convert_keys_to_camel_preserves_nested_json_schema(self):
+        """Test that nested JSON Schema structures are preserved."""
+        from langchain_oci.common.async_support import _convert_keys_to_camel
+
+        nested_schema = {
+            "api_format": "GENERIC",
+            "tools": [
+                {
+                    "parameters": {
+                        "properties": {
+                            "my_custom_field": {
+                                "items": {
+                                    "properties": {"nested_field": {"type": "string"}}
+                                }
+                            }
+                        }
+                    }
+                }
+            ],
+        }
+
+        result = _convert_keys_to_camel(nested_schema)
+
+        # API key should be converted
+        assert "apiFormat" in result
+        assert "api_format" not in result
+
+        # Schema property names should be preserved at all nesting levels
+        tool_params = result["tools"][0]["parameters"]
+        assert "my_custom_field" in tool_params["properties"]
+        items = tool_params["properties"]["my_custom_field"]["items"]
+        nested_props = items["properties"]
+        assert "nested_field" in nested_props
+
 
 class TestAsyncClientErrorHandling:
     """Tests for OCIAsyncClient error handling."""
