@@ -23,7 +23,7 @@ In this repository, a typical ingestion path is:
 ## 2) Embedding model used
 
 This example explicitly passes:
-- `OCIGenAIEmbeddings(model_id="cohere.embed-english-v3.0", ...)`
+- `OCIGenAIEmbeddings(model_id="cohere.embed-v4.0", ...)`
 
 ## 3) Search implementation used here
 
@@ -44,7 +44,7 @@ At runtime, this script performs retrieval and synthesis only.
 ## Quick answers (review checklist)
 
 - Data source: ADB table populated by your ingestion pipeline (repo scripts provided).
-- Embeddings: explicitly passed as `cohere.embed-english-v3.0` via
+- Embeddings: explicitly passed as `cohere.embed-v4.0` via
   `OCIGenAIEmbeddings`.
 - Additional ADB search class: no; this uses built-in `ADB` + auto tools.
 - Runtime inputs: ADB credentials/config, OCI config, and user prompt.
@@ -60,7 +60,7 @@ Optional:
 - ADB_WALLET_LOCATION
 - ADB_WALLET_PASSWORD
 - ADB_TABLE_NAME (default: VECTOR_DOCUMENTS)
-- OCI_AUTH_PROFILE (default: DEFAULT)
+- OCI_AUTH_PROFILE (default: API_KEY_AUTH)
 """
 
 from __future__ import annotations
@@ -88,7 +88,7 @@ def main() -> None:
         service_endpoint = (
             f"https://inference.generativeai.{region}.oci.oraclecloud.com"
         )
-    auth_profile = os.environ.get("OCI_AUTH_PROFILE", "DEFAULT")
+    auth_profile = os.environ.get("OCI_AUTH_PROFILE", "API_KEY_AUTH")
 
     adb_store = ADB(
         dsn=_required_env("ADB_DSN"),
@@ -97,6 +97,12 @@ def main() -> None:
         wallet_location=os.environ.get("ADB_WALLET_LOCATION"),
         wallet_password=os.environ.get("ADB_WALLET_PASSWORD"),
         table_name=os.environ.get("ADB_TABLE_NAME", "VECTOR_DOCUMENTS"),
+        chunk_on_write=True,
+        chunking_params={
+            "split": "sentence",
+            "max": 20,
+            "normalize": "all",
+        },
         # hint guides query routing when multiple datastores are configured
         hint=(
             "vectorized research documents. Contains title/content/source/embedding "
@@ -104,9 +110,9 @@ def main() -> None:
         ),
     )
 
-    # Pass the embedding model explicitly (same as SDK default)
+    # Pass the embedding model explicitly. Keep this aligned with index-time model.
     embedding_model = OCIGenAIEmbeddings(
-        model_id="cohere.embed-english-v3.0",
+        model_id="cohere.embed-v4.0",
         compartment_id=compartment_id,
         service_endpoint=service_endpoint,
         auth_type="API_KEY",

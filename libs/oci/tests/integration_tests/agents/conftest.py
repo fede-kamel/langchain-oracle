@@ -137,10 +137,24 @@ def adb_is_reachable() -> bool:
         import oracledb
 
         config = get_adb_config()
+        connect_kwargs = {
+            "user": config["user"],
+            "password": config["password"],
+            "dsn": config["dsn"],
+        }
+        if config.get("wallet_location"):
+            connect_kwargs.update(
+                {
+                    "config_dir": config["wallet_location"],
+                    "wallet_location": config["wallet_location"],
+                    "wallet_password": os.environ.get(
+                        "ADB_WALLET_PASSWORD", config["password"]
+                    ),
+                }
+            )
+
         conn = oracledb.connect(
-            user=config["user"],
-            password=config["password"],
-            dsn=config["dsn"],
+            **connect_kwargs,
         )
         conn.close()
         return True

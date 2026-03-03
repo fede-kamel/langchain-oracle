@@ -59,7 +59,7 @@ Runtime examples then perform retrieval/synthesis over these indexed documents.
   -> ADB vectors using the scripts listed above.
 
 2. Which embeddings model is used?
-- Default datastore embedding model is Cohere on OCI (`cohere.embed-english-v3.0`).
+- Default datastore embedding model is Cohere on OCI (`cohere.embed-v4.0`).
 - Examples in this repo now pass that model explicitly.
 
 3. Is there an additional ADB search class I must implement?
@@ -104,7 +104,7 @@ Guidance:
 ## Embeddings
 
 If you use datastores and do not pass `embedding_model=...`, the default is:
-- `cohere.embed-english-v3.0` via `OCIGenAIEmbeddings`
+- `cohere.embed-v4.0` via `OCIGenAIEmbeddings`
 
 You can override embeddings by passing a custom model:
 
@@ -112,7 +112,7 @@ You can override embeddings by passing a custom model:
 from langchain_oci import OCIGenAIEmbeddings
 
 embedding_model = OCIGenAIEmbeddings(
-    model_id="cohere.embed-english-light-v3.0",
+    model_id="cohere.embed-v4.0",
     compartment_id="ocid1.compartment...",
     service_endpoint="https://inference.generativeai.us-chicago-1.oci.oraclecloud.com",
     auth_type="API_KEY",
@@ -122,6 +122,8 @@ embedding_model = OCIGenAIEmbeddings(
 Important:
 - use the same embedding model for indexing and query-time search
 - ensure embedding dimension matches your vector column definition
+- `ADB` uses `OracleVS` (`langchain-oracledb`) and expects OracleVS table
+  schema (`id/embedding/text/metadata`).
 
 ## Example: ADB Datastore (Auto Tools)
 
@@ -139,7 +141,7 @@ store = ADB(
 )
 
 embedding_model = OCIGenAIEmbeddings(
-    model_id="cohere.embed-english-v3.0",
+    model_id="cohere.embed-v4.0",
     compartment_id="ocid1.compartment...",
     service_endpoint="https://inference.generativeai.us-chicago-1.oci.oraclecloud.com",
     auth_type="API_KEY",
@@ -174,7 +176,7 @@ from langchain_oci import OCIGenAIEmbeddings
 from langchain_oci.agents import ADB, create_deep_research_agent
 
 embedding_model = OCIGenAIEmbeddings(
-    model_id="cohere.embed-english-v3.0",
+    model_id="cohere.embed-v4.0",
     compartment_id="ocid1.compartment...",
     service_endpoint="https://inference.generativeai.us-chicago-1.oci.oraclecloud.com",
     auth_type="API_KEY",

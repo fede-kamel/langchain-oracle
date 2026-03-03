@@ -33,7 +33,7 @@ If you need an end-to-end ingestion pipeline example, see:
 ## 2) Embedding model used
 
 This example explicitly passes:
-- `OCIGenAIEmbeddings(model_id="cohere.embed-english-v3.0", ...)`
+- `OCIGenAIEmbeddings(model_id="cohere.embed-v4.0", ...)`
 
 ## 3) Search implementation used here
 
@@ -52,7 +52,7 @@ No custom search class is implemented in this file.
 ## Quick answers (review checklist)
 
 - Data source: existing OpenSearch index (`OPENSEARCH_INDEX`), pre-populated by you.
-- Embeddings: explicitly passed as `cohere.embed-english-v3.0` via
+- Embeddings: explicitly passed as `cohere.embed-v4.0` via
   `OCIGenAIEmbeddings`.
 - Additional ADB search class: not used here; this gist uses built-in OpenSearch
   datastore integration.
@@ -123,7 +123,10 @@ def main():
             "OPENSEARCH_ENDPOINT",
             "https://ai-dev.observ.us-ashburn-1.ocs.oraclecloud.com:9200",
         ),
-        username=os.environ.get("OPENSEARCH_USER", "ai_user"),
+        username=os.environ.get(
+            "OPENSEARCH_USERNAME",
+            os.environ.get("OPENSEARCH_USER", "ai_user"),
+        ),
         password=os.environ.get("OPENSEARCH_PASSWORD", "your-password-here"),
         index_name=os.environ.get("OPENSEARCH_INDEX", "observai_diagnostic-patterns"),
         verify_certs=False,
@@ -140,13 +143,13 @@ def main():
     # =========================================================================
     print("\n[2/3] Creating deep research agent...")
 
-    # Pass the embedding model explicitly (same as SDK default)
+    # Pass the embedding model explicitly. Keep this aligned with index-time model.
     embedding_model = OCIGenAIEmbeddings(
-        model_id="cohere.embed-english-v3.0",
+        model_id="cohere.embed-v4.0",
         compartment_id=COMPARTMENT_ID,
         service_endpoint=SERVICE_ENDPOINT,
         auth_type="API_KEY",
-        auth_profile=os.environ.get("OCI_AUTH_PROFILE", "DEFAULT"),
+        auth_profile=os.environ.get("OCI_AUTH_PROFILE", "API_KEY_AUTH"),
     )
 
     # The agent automatically creates tools from datastores and uses them
@@ -157,7 +160,7 @@ def main():
         compartment_id=COMPARTMENT_ID,
         service_endpoint=SERVICE_ENDPOINT,
         auth_type="API_KEY",
-        auth_profile=os.environ.get("OCI_AUTH_PROFILE", "DEFAULT"),
+        auth_profile=os.environ.get("OCI_AUTH_PROFILE", "API_KEY_AUTH"),
         temperature=0.4,
         max_tokens=8000,
         top_k=10,

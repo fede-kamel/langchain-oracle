@@ -187,6 +187,91 @@ class TestADBDataStore:
         assert store.wallet_location is None
         assert store.wallet_password is None
 
+    def test_search_delegates_to_oraclevs_backend(self) -> None:
+        """Test ADB delegates vector search to OracleVS when enabled."""
+        from langchain_core.documents import Document
+        from langchain_oci.agents.datastores.vectorstores import ADB
+
+        store = ADB(
+            dsn="mydb_low",
+            user="ADMIN",
+            password="password",
+        )
+
+        oraclevs = MagicMock()
+        oraclevs.similarity_search_by_vector_with_relevance_scores.return_value = [
+            (
+                Document(
+                    page_content="alpha content",
+                    metadata={"id": "42", "title": "Alpha", "source": "test_source"},
+                ),
+                0.2,
+            )
+        ]
+        store._oraclevs = oraclevs
+
+        results = store.search(query="alpha", embedding=[0.1, 0.2], top_k=1)
+
+        assert len(results) == 1
+        assert results[0]["id"] == "42"
+        assert results[0]["title"] == "Alpha"
+        assert results[0]["source"] == "test_source"
+        assert results[0]["score"] == 0.8
+
+    @patch("langchain_oci.agents.datastores.vectorstores.adb.uuid.uuid4")
+    def test_insert_delegates_to_oraclevs_backend(self, mock_uuid) -> None:
+        """Test ADB insert delegates to OracleVS add_documents in chunk mode."""
+        from langchain_oci.agents.datastores.vectorstores import ADB
+
+        mock_uuid.return_value = "doc-123"
+        store = ADB(dsn="mydb_low", user="ADMIN", password="password")
+        store._oraclevs = MagicMock()
+        store._write_text_splitter = MagicMock()
+
+        inserted_id = store.insert(
+            title="T",
+            content="C",
+            source="S",
+            embedding=[0.1, 0.2],
+        )
+
+        assert inserted_id == "doc-123"
+        store._oraclevs.add_documents.assert_called_once()
+        args, kwargs = store._oraclevs.add_documents.call_args
+        assert kwargs["ids"] == ["doc-123"]
+        assert kwargs["text_splitter"] is store._write_text_splitter
+        assert args[0][0].page_content == "C"
+        assert args[0][0].metadata == {
+            "id": "doc-123",
+            "title": "T",
+            "source": "S",
+        }
+
+    def test_bulk_insert_delegates_to_oraclevs_backend(self) -> None:
+        """Test ADB bulk insert delegates to OracleVS add_documents in chunk mode."""
+        from langchain_oci.agents.datastores.vectorstores import ADB
+
+        store = ADB(dsn="mydb_low", user="ADMIN", password="password")
+        store._oraclevs = MagicMock()
+        store._write_text_splitter = MagicMock()
+
+        count = store.bulk_insert(
+            documents=[{"id": "1", "title": "A", "content": "alpha", "source": "src"}],
+            embeddings=[[0.1, 0.2]],
+        )
+
+        assert count == 1
+        store._oraclevs.add_documents.assert_called_once()
+        args, kwargs = store._oraclevs.add_documents.call_args
+        assert kwargs["ids"] == ["1"]
+        assert kwargs["text_splitter"] is store._write_text_splitter
+        assert args[0][0].page_content == "alpha"
+        assert args[0][0].metadata == {
+            "id": "1",
+            "title": "A",
+            "source": "src",
+        }
+
 
 @pytest.mark.requires("oci")
 class TestStoreSelector:

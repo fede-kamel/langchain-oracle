@@ -23,7 +23,7 @@ Typical dataset origins in this flow:
 ## 2) Embedding model used
 
 This example explicitly uses:
-`cohere.embed-english-v3.0`.
+`cohere.embed-v4.0`.
 
 This is the same model used by default in `langchain-oci` datastore tooling.
 
@@ -48,7 +48,7 @@ over documents that are already indexed in ADB.
 ## Quick answers (review checklist)
 
 - Data source: ADB `VECTOR_DOCUMENTS`, pre-populated via ingestion scripts.
-- Embeddings: explicitly passed as `cohere.embed-english-v3.0` in this file.
+- Embeddings: explicitly passed as `cohere.embed-v4.0` in this file.
 - Additional ADB search class: yes, intentionally in this gist (`VectorSearchTool`)
   to show custom-tool pattern.
 - Runtime inputs: ADB connection, OCI config, and user prompt.
@@ -202,10 +202,11 @@ def create_vector_search_tool() -> VectorSearchTool:
 
     # Create embedding model
     embedding_model = OCIGenAIEmbeddings(
-        model_id="cohere.embed-english-v3.0",
+        model_id="cohere.embed-v4.0",
         compartment_id=COMPARTMENT_ID,
         service_endpoint=f"https://inference.generativeai.{GENAI_REGION}.oci.oraclecloud.com",
         auth_type="API_KEY",
+        auth_profile=os.environ.get("OCI_AUTH_PROFILE", "API_KEY_AUTH"),
     )
 
     # Create database connection
@@ -247,6 +248,7 @@ def main():
         compartment_id=COMPARTMENT_ID,
         service_endpoint=service_endpoint,
         auth_type="API_KEY",
+        auth_profile=os.environ.get("OCI_AUTH_PROFILE", "API_KEY_AUTH"),
         system_prompt=(
             "You are a deep research analyst with access to a semantic search tool "
             "that can find relevant documents across multiple domains:\n"

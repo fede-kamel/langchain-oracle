@@ -188,7 +188,7 @@ def _create_default_embedding_model(
         )
 
     return OCIGenAIEmbeddings(
-        model_id="cohere.embed-english-v3.0",
+        model_id="cohere.embed-v4.0",
         compartment_id=compartment_id,
         service_endpoint=service_endpoint,
         auth_type=auth_type,

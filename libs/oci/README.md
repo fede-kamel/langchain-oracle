@@ -354,13 +354,14 @@ For the deep-research examples in this repo, the ADB vector table is populated t
 
 ### Embedding Model Used
 
-- Default datastore embedding model in `create_datastore_tools(...)`: `cohere.embed-english-v3.0` via `OCIGenAIEmbeddings`.
+- Default datastore embedding model in `create_datastore_tools(...)`: `cohere.embed-v4.0` via `OCIGenAIEmbeddings`.
 - Same model is used in `scripts/vectorize_datasets.py` by default.
 - You can override by passing `embedding_model=...` to `create_deep_research_agent(...)` or `create_datastore_tools(...)`.
 
 ### Search Implementation (ADB)
 
 - `ADB` (`langchain_oci.agents.datastores.vectorstores.adb.ADB`) is the datastore adapter for Oracle Autonomous Database.
+- `ADB` uses `langchain-oracledb` (`OracleVS`) for vector operations.
 - Semantic retrieval is executed through datastore tools, especially `SearchTool`, which:
   - creates query embeddings using the configured embedding model
   - routes to the best datastore
@@ -372,7 +373,7 @@ You do not need to implement an extra ADB-specific search tool class for normal 
 
 To use deep research with ADB, you typically need:
 
-1. A populated datastore (for example, ADB table with `title/content/source/embedding`).
+1. A populated datastore with OracleVS schema (`id/embedding/text/metadata`).
 2. Datastore connection config (`dsn`, `user`, `password`, optional wallet).
 3. OCI GenAI config (`compartment_id`, `service_endpoint`, auth).
 4. The research prompt(s) for the agent.
@@ -413,7 +414,7 @@ store = ADB(
 )
 
 embedding_model = OCIGenAIEmbeddings(
-    model_id="cohere.embed-english-v3.0",
+    model_id="cohere.embed-v4.0",
     compartment_id="ocid1.compartment...",
     service_endpoint="https://inference.generativeai.us-chicago-1.oci.oraclecloud.com",
     auth_type="API_KEY",

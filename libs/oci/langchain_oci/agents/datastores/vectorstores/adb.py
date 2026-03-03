@@ -5,10 +5,12 @@
 
 from __future__ import annotations
 
-import json
 import os
+import uuid
 from dataclasses import dataclass, field
 from typing import Any, Optional
+
+from langchain_core.documents import Document
 
 from langchain_oci.agents.datastores.vectorstores.base import VectorDataStore
 
@@ -16,6 +18,9 @@ from langchain_oci.agents.datastores.vectorstores.base import VectorDataStore
 @dataclass
 class ADB(VectorDataStore):
     """Oracle Autonomous Database vector datastore.
+
+    Uses ``langchain_oracledb.vectorstores.OracleVS`` for vector datastore
+    operations.
 
     Example:
         >>> from langchain_oci.agents import ADB, create_datastore_tools
@@ -41,9 +46,14 @@ class ADB(VectorDataStore):
     wallet_password: Optional[str] = None
     table_name: str = "VECTOR_DOCUMENTS"
     hint: str = ""
+    chunk_on_write: bool = True
+    chunking_params: Optional[dict[str, Any]] = None
 
     _connection: Any = field(default=None, repr=False)
     _embedding_model: Any = field(default=None, repr=False)
+    _oraclevs: Any = field(default=None, repr=False)
+    _text_retriever: Any = field(default=None, repr=False)
+    _write_text_splitter: Any = field(default=None, repr=False)
 
     @property
     def name(self) -> str:
@@ -68,124 +78,151 @@ class ADB(VectorDataStore):
             wallet_password=self.wallet_password or self.password,
         )
         self._embedding_model = embedding_model
+        self._initialize_oraclevs_backend()
 
-    def _read_clob(self, value: Any) -> str:
+    def _initialize_oraclevs_backend(self) -> None:
+        try:
+            from langchain_community.vectorstores.utils import DistanceStrategy
+            from langchain_oracledb.document_loaders.oracleai import OracleTextSplitter
+            from langchain_oracledb.retrievers import OracleTextSearchRetriever
+            from langchain_oracledb.vectorstores.oraclevs import OracleVS
+        except ImportError as e:
+            raise ImportError(
+                "langchain-oracledb required for ADB datastore integration. "
+                "Install with: pip install langchain-oracledb"
+            ) from e
+
+        distance_strategy = getattr(
+            DistanceStrategy,
+            "COSINE_DISTANCE",
+            getattr(DistanceStrategy, "COSINE"),
+        )
+
+        self._oraclevs = OracleVS(
+            client=self._connection,
+            embedding_function=self._embedding_model,
+            table_name=self.table_name,
+            distance_strategy=distance_strategy,
+            mutate_on_duplicate=True,
+        )
+        self._text_retriever = OracleTextSearchRetriever(vector_store=self._oraclevs)
+        if self.chunk_on_write:
+            params = self.chunking_params or {
+                "split": "sentence",
+                "max": 20,
+                "normalize": "all",
+            }
+            self._write_text_splitter = OracleTextSplitter(conn=self._connection, params=params)
+
+    def _ingest_document(self, document: Document, doc_id: str) -> None:
+        if self._write_text_splitter is not None:
+            self._oraclevs.add_documents(  # type: ignore[union-attr]
+                [document],
+                text_splitter=self._write_text_splitter,
+                ids=[doc_id],
+            )
+            return
+
+        self._oraclevs.add_texts(  # type: ignore[union-attr]
+            texts=[document.page_content],
+            metadatas=[document.metadata],
+            ids=[doc_id],
+        )
+
+    def _read_text(self, value: Any) -> str:
         if hasattr(value, "read"):
             return value.read()
         return str(value) if value else ""
 
     def search(self, query: str, embedding: list[float], top_k: int) -> list[dict]:
-        cursor = self._connection.cursor()
-        sql = f"""
-            SELECT id, title, content, source,
-                   VECTOR_DISTANCE(embedding, :query_vec, COSINE) as distance
-            FROM {self.table_name}
-            ORDER BY VECTOR_DISTANCE(embedding, :query_vec, COSINE)
-            FETCH FIRST :top_k ROWS ONLY
-        """
-        cursor.execute(sql, {"query_vec": json.dumps(embedding), "top_k": top_k})
-        results = []
-        for row in cursor:
-            results.append(
-                {
-                    "id": row[0],
-                    "title": row[1],
-                    "content": self._read_clob(row[2])[:1000],
-                    "source": row[3],
-                    "score": 1 - row[4],
-                }
-            )
-        cursor.close()
-        return results
+        docs_and_scores = self._oraclevs.similarity_search_by_vector_with_relevance_scores(  # type: ignore[union-attr]  # noqa: E501
+            embedding=embedding,
+            k=top_k,
+        )
+        return [
+            {
+                "id": (doc.metadata or {}).get("id"),
+                "title": (doc.metadata or {}).get("title", ""),
+                "content": (doc.page_content or "")[:1000],
+                "source": (doc.metadata or {}).get("source", ""),
+                "score": 1 - score,
+            }
+            for doc, score in docs_and_scores
+        ]
 
     def keyword_search(self, query: str, top_k: int) -> list[dict]:
-        cursor = self._connection.cursor()
-        sql = f"""
-            SELECT id, title, content, source
-            FROM {self.table_name}
-            WHERE UPPER(content) LIKE UPPER(:pattern)
-               OR UPPER(title) LIKE UPPER(:pattern)
-            FETCH FIRST :top_k ROWS ONLY
-        """
-        cursor.execute(sql, {"pattern": f"%{query}%", "top_k": top_k})
-        results = []
-        for row in cursor:
-            results.append(
-                {
-                    "id": row[0],
-                    "title": row[1],
-                    "content": self._read_clob(row[2])[:1000],
-                    "source": row[3],
-                }
-            )
-        cursor.close()
-        return results
+        self._text_retriever.k = top_k  # type: ignore[union-attr]
+        docs = self._text_retriever.invoke(query)  # type: ignore[union-attr]
+        return [
+            {
+                "id": (doc.metadata or {}).get("id"),
+                "title": (doc.metadata or {}).get("title", ""),
+                "content": (doc.page_content or "")[:1000],
+                "source": (doc.metadata or {}).get("source", ""),
+            }
+            for doc in docs
+        ]
 
     def get(self, document_id: str | int) -> Optional[dict]:
         cursor = self._connection.cursor()
-        sql = f"""
-            SELECT id, title, content, source, created_at
+        cursor.execute(
+            f"""
+            SELECT text, metadata
             FROM {self.table_name}
-            WHERE id = :id
-        """
-        cursor.execute(sql, {"id": int(document_id)})
-        row = cursor.fetchone()
+            WHERE JSON_VALUE(metadata, '$.id') = :doc_id
+            """,
+            {"doc_id": str(document_id)},
+        )
+        rows = cursor.fetchall()
         cursor.close()
-        if not row:
+        if not rows:
             return None
+
+        parsed = []
+        for text_value, metadata in rows:
+            if not isinstance(metadata, dict):
+                metadata = {}
+            parsed.append((self._read_text(text_value), metadata))
+
+        parsed.sort(key=lambda row: row[1].get("chunk_index", 0))
+        content = "\n".join([p[0] for p in parsed])
+        metadata = parsed[0][1]
         return {
-            "id": row[0],
-            "title": row[1],
-            "content": self._read_clob(row[2]),
-            "source": row[3],
-            "created_at": str(row[4]) if row[4] else None,
+            "id": metadata.get("id", str(document_id)),
+            "title": metadata.get("title", ""),
+            "content": content,
+            "source": metadata.get("source", ""),
+            "created_at": None,
         }
 
     def insert(
         self, title: str, content: str, source: str, embedding: list[float]
     ) -> str:
-        cursor = self._connection.cursor()
-        sql = f"""
-            INSERT INTO {self.table_name} (title, content, source, embedding)
-            VALUES (:title, :content, :source, :embedding)
-            RETURNING id INTO :out_id
-        """
-        out_id = cursor.var(int)
-        cursor.execute(
-            sql,
-            {
-                "title": title,
-                "content": content,
-                "source": source,
-                "embedding": json.dumps(embedding),
-                "out_id": out_id,
-            },
+        doc_id = str(uuid.uuid4())
+        self._ingest_document(
+            Document(
+                page_content=content,
+                metadata={"id": doc_id, "title": title, "source": source},
+            ),
+            doc_id,
         )
-        self._connection.commit()
-        doc_id = out_id.getvalue()[0]
-        cursor.close()
-        return str(doc_id)
+        return doc_id
 
     def bulk_insert(self, documents: list[dict], embeddings: list[list[float]]) -> int:
-        cursor = self._connection.cursor()
-        sql = f"""
-            INSERT INTO {self.table_name} (title, content, source, embedding)
-            VALUES (:title, :content, :source, :embedding)
-        """
-        batch_data = [
-            {
-                "title": doc.get("title", "Untitled"),
-                "content": doc.get("content", ""),
-                "source": doc.get("source", "bulk_insert"),
-                "embedding": json.dumps(embedding),
-            }
-            for doc, embedding in zip(documents, embeddings)
-        ]
-        cursor.executemany(sql, batch_data)
-        self._connection.commit()
-        count = cursor.rowcount
-        cursor.close()
-        return count
+        for doc in documents:
+            doc_id = str(doc.get("id") or uuid.uuid4())
+            self._ingest_document(
+                Document(
+                    page_content=str(doc.get("content", "")),
+                    metadata={
+                        "id": doc_id,
+                        "title": str(doc.get("title", "Untitled")),
+                        "source": str(doc.get("source", "bulk_insert")),
+                    },
+                ),
+                doc_id,
+            )
+        return len(documents)
 
     def update(
         self,
@@ -195,35 +232,31 @@ class ADB(VectorDataStore):
         source: Optional[str],
         embedding: Optional[list[float]],
     ) -> bool:
-        cursor = self._connection.cursor()
-        set_clauses = []
-        params: dict[str, Any] = {"id": int(document_id)}
-        if title is not None:
-            set_clauses.append("title = :title")
-            params["title"] = title
-        if content is not None:
-            set_clauses.append("content = :content")
-            params["content"] = content
-        if source is not None:
-            set_clauses.append("source = :source")
-            params["source"] = source
-        if embedding is not None:
-            set_clauses.append("embedding = :embedding")
-            params["embedding"] = json.dumps(embedding)
-        if not set_clauses:
+        current = self.get(document_id)
+        if not current:
             return False
-        sql = f"UPDATE {self.table_name} SET {', '.join(set_clauses)} WHERE id = :id"
-        cursor.execute(sql, params)
-        self._connection.commit()
-        updated = cursor.rowcount > 0
-        cursor.close()
-        return updated
+        new_title = title if title is not None else str(current.get("title", ""))
+        new_content = content if content is not None else str(current.get("content", ""))
+        new_source = source if source is not None else str(current.get("source", ""))
+        self.delete(document_id)
+        self._ingest_document(
+            Document(
+                page_content=new_content,
+                metadata={
+                    "id": str(document_id),
+                    "title": new_title,
+                    "source": new_source,
+                },
+            ),
+            str(document_id),
+        )
+        return True
 
     def delete(self, document_id: str | int) -> bool:
         cursor = self._connection.cursor()
         cursor.execute(
-            f"DELETE FROM {self.table_name} WHERE id = :id",
-            {"id": int(document_id)},
+            f"DELETE FROM {self.table_name} WHERE JSON_VALUE(metadata, '$.id') = :doc_id",
+            {"doc_id": str(document_id)},
         )
         self._connection.commit()
         deleted = cursor.rowcount > 0
@@ -235,13 +268,16 @@ class ADB(VectorDataStore):
         cursor.execute(f"SELECT COUNT(*) FROM {self.table_name}")
         count = cursor.fetchone()[0]
         cursor.execute(f"""
-            SELECT source, COUNT(*) as cnt
+            SELECT JSON_VALUE(metadata, '$.source') as source, COUNT(*) as cnt
             FROM {self.table_name}
-            GROUP BY source
+            GROUP BY JSON_VALUE(metadata, '$.source')
             ORDER BY cnt DESC
             FETCH FIRST 10 ROWS ONLY
         """)
-        sources = {row[0]: row[1] for row in cursor.fetchall()}
+        sources = {
+            (row[0] if row[0] is not None else "unknown"): row[1]
+            for row in cursor.fetchall()
+        }
         cursor.close()
         return {
             "store": self.name,
