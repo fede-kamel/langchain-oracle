@@ -72,6 +72,9 @@ import os
 
 from langchain_core.messages import HumanMessage
 
+from langchain_oci.agents import create_deep_research_agent
+from langchain_oci.tools import create_oci_object_storage_tools
+
 # Configuration
 COMPARTMENT_ID = os.environ.get(
     "OCI_COMPARTMENT_ID",
@@ -90,9 +93,6 @@ LARGE_BUCKET = "deep-research-large"  # Wikipedia, C4, ArXiv
 
 def main():
     """Run deep research agent with OCI Object Storage."""
-    from langchain_oci.agents import create_deep_research_agent
-    from langchain_oci.tools import create_oci_object_storage_tools
-
     print("=" * 60)
     print("Deep Research Agent with OCI Object Storage")
     print("=" * 60)
