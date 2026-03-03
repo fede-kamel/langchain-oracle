@@ -45,8 +45,8 @@ class TestVectorDataStore:
         }
         assert expected.issubset(abstract_methods)
 
-    def test_hint_property_has_default(self) -> None:
-        """Test that hint property returns empty string by default."""
+    def test_datastore_description_property_has_default(self) -> None:
+        """Test that datastore_description property returns empty string by default."""
         from langchain_oci.agents.datastores.vectorstores import VectorDataStore
 
         # Create a concrete implementation for testing
@@ -83,7 +83,7 @@ class TestVectorDataStore:
                 return {}
 
         store = ConcreteStore()
-        assert store.hint == ""
+        assert store.datastore_description == ""
 
 
 @pytest.mark.requires("oci")
@@ -99,14 +99,14 @@ class TestOpenSearchDataStore:
             index_name="test-index",
             username="admin",
             password="admin",
-            hint="test documents",
+            datastore_description="test documents",
         )
 
         assert store.endpoint == "https://localhost:9200"
         assert store.index_name == "test-index"
         assert store.username == "admin"
         assert store.name == "opensearch"
-        assert store.hint == "test documents"
+        assert store.datastore_description == "test documents"
 
     def test_connect_requires_opensearchpy(self) -> None:
         """Test that connect raises ImportError if opensearch-py not installed."""
@@ -150,14 +150,14 @@ class TestADBDataStore:
             password="password123",
             wallet_location="~/.oracle-wallet",
             table_name="MY_VECTORS",
-            hint="sales data",
+            datastore_description="sales data",
         )
 
         assert store.dsn == "mydb_low"
         assert store.user == "ADMIN"
         assert store.table_name == "MY_VECTORS"
         assert store.name == "adb"
-        assert store.hint == "sales data"
+        assert store.datastore_description == "sales data"
 
     def test_connect_requires_oracledb(self) -> None:
         """Test that connect raises ImportError if oracledb not installed."""
@@ -286,7 +286,7 @@ class TestStoreSelector:
         mock_embedding.embed_query.return_value = [0.1] * 1024
 
         mock_store = MagicMock()
-        mock_store.hint = "test"
+        mock_store.datastore_description = "test"
 
         selector = StoreSelector(
             stores={"only_store": mock_store},
@@ -307,10 +307,10 @@ class TestStoreSelector:
         )
 
         hr_store = MagicMock()
-        hr_store.hint = "HR policies, employee benefits"
+        hr_store.datastore_description = "HR policies, employee benefits"
 
         sales_store = MagicMock()
-        sales_store.hint = "sales data, revenue"
+        sales_store.datastore_description = "sales data, revenue"
 
         selector = StoreSelector(
             stores={"hr": hr_store, "sales": sales_store},
@@ -339,7 +339,7 @@ class TestCreateDatastoreTools:
         from langchain_oci.agents.datastores.tools import create_datastore_tools
 
         mock_store = MagicMock()
-        mock_store.hint = "test"
+        mock_store.datastore_description = "test"
 
         with pytest.raises(ValueError, match="not found"):
             create_datastore_tools(
@@ -352,7 +352,7 @@ class TestCreateDatastoreTools:
         from langchain_oci.agents.datastores.tools import create_datastore_tools
 
         mock_store = MagicMock()
-        mock_store.hint = "test"
+        mock_store.datastore_description = "test"
 
         with patch.dict("os.environ", {}, clear=True):
             with pytest.raises(ValueError, match="compartment_id is required"):
@@ -363,7 +363,7 @@ class TestCreateDatastoreTools:
         from langchain_oci.agents.datastores.tools import create_datastore_tools
 
         mock_store = MagicMock()
-        mock_store.hint = "test"
+        mock_store.datastore_description = "test"
 
         mock_embedding = MagicMock()
         mock_embedding.embed_query.return_value = [0.1] * 1024
@@ -382,7 +382,7 @@ class TestCreateDatastoreTools:
         from langchain_oci.agents.datastores.tools import create_datastore_tools
 
         mock_store = MagicMock()
-        mock_store.hint = "test documents"
+        mock_store.datastore_description = "test documents"
 
         mock_embedding = MagicMock()
         mock_embedding.embed_query.return_value = [0.1] * 1024
@@ -400,7 +400,7 @@ class TestCreateDatastoreTools:
         from langchain_oci.agents.datastores.tools import create_datastore_tools
 
         mock_store = MagicMock()
-        mock_store.hint = "test"
+        mock_store.datastore_description = "test"
 
         mock_embedding = MagicMock()
         mock_embedding.embed_query.return_value = [0.1] * 1024

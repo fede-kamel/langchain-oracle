@@ -36,7 +36,7 @@ class StatsTool(DatastoreTool):
                 stats_list.append(
                     StoreStats(
                         name=name,
-                        description=s.hint or "No description",
+                        description=s.datastore_description or "No description",
                         document_count=raw_stats.get("document_count", 0),
                         extra={
                             k: v for k, v in raw_stats.items() if k != "document_count"

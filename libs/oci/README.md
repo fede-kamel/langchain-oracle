@@ -383,18 +383,18 @@ The input documents are provided during ingestion time; at runtime the agent mai
 Reference implementation in this repo:
 `examples/agents/deep_research_adb_datastore.py`
 
-### What `hint` Does
+### What `datastore_description` Does
 
-`hint` is not indexed document content. It is store-level metadata used by the
+`datastore_description` is not indexed document content. It is store-level metadata used by the
 SDK to route queries across multiple datastores.
 
-- Each store hint is embedded once.
-- Query embeddings are compared against hint embeddings.
+- Each store description is embedded once at initialization.
+- Query embeddings are compared against description embeddings using cosine similarity.
 - The best-scoring store is selected for search tools.
 
 Example:
-- Store A hint: "SRE incidents, runbooks, diagnostics"
-- Store B hint: "legal contracts, clauses, compliance"
+- Store A description: "SRE incidents, runbooks, diagnostics"
+- Store B description: "legal contracts, clauses, compliance"
 - Query "timeout troubleshooting" routes toward Store A.
 
 ### Minimal ADB Integration Example
@@ -410,7 +410,7 @@ store = ADB(
     password="***",
     wallet_location="~/.oracle-wallet/mydb",  # optional
     table_name="VECTOR_DOCUMENTS",
-    hint="medical QA, legal clauses, web docs",
+    datastore_description="medical QA, legal clauses, web docs",
 )
 
 embedding_model = OCIGenAIEmbeddings(

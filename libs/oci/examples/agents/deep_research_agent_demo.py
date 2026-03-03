@@ -23,7 +23,7 @@ that you provide via environment variables.
 
 - `OPENSEARCH_INDEX` should point to a pre-populated index.
 - Documents in that index are expected to represent SRE material
-  (runbooks, incidents, diagnostics), as hinted in `hint=...`.
+  (runbooks, incidents, diagnostics), as described in `datastore_description=...`.
 
 If you need an end-to-end ingestion pipeline example, see:
 - `examples/agents/deep_research_oci_storage.py`
@@ -132,8 +132,8 @@ def main():
         verify_certs=False,
         vector_field="vector_field",
         search_fields=["text", "metadata.title", "metadata.content"],
-        # hint guides query routing when multiple datastores are configured
-        hint="SRE investigations, diagnostic patterns, error messages, runbooks",
+        # datastore_description guides query routing when multiple datastores are configured
+        datastore_description="SRE investigations, diagnostic patterns, error messages, runbooks",
     )
 
     print("   - SRE datastore (OpenSearch): ready")

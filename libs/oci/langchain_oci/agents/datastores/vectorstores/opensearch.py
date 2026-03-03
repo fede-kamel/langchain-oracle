@@ -23,7 +23,7 @@ class OpenSearch(VectorDataStore):
         ...     index_name="my-docs",
         ...     username="admin",
         ...     password="...",
-        ...     hint="company documentation, policies",
+        ...     datastore_description="company documentation, policies",
         ... )
         >>>
         >>> tools = create_datastore_tools(
@@ -40,7 +40,7 @@ class OpenSearch(VectorDataStore):
     verify_certs: bool = True
     vector_field: str = "embedding"
     search_fields: list[str] = field(default_factory=lambda: ["title", "content"])
-    hint: str = ""
+    datastore_description: str = ""
 
     _client: Any = field(default=None, repr=False)
     _embedding_model: Any = field(default=None, repr=False)

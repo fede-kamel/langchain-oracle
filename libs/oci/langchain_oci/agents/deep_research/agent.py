@@ -100,13 +100,13 @@ def create_deep_research_agent(
         ...         "docs": OpenSearch(
         ...             endpoint="https://opensearch:9200",
         ...             index_name="company-docs",
-        ...             hint="internal documentation, policies",
+        ...             datastore_description="internal documentation, policies",
         ...         ),
         ...         "sales": ADB(
         ...             dsn="mydb_low",
         ...             user="ADMIN",
         ...             password="...",
-        ...             hint="sales data, revenue, customers",
+        ...             datastore_description="sales data, revenue, customers",
         ...         ),
         ...     },
         ...     compartment_id="ocid1.compartment...",

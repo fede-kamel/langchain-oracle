@@ -33,8 +33,18 @@ class VectorDataStore(ABC):
         ...
 
     @property
-    def hint(self) -> str:
-        """Hint about documents in this store. Used for auto-routing."""
+    def datastore_description(self) -> str:
+        """Description of documents in this store.
+
+        Used for auto-routing in multi-datastore configurations. The agent
+        uses semantic similarity between the query and datastore descriptions
+        to select the most relevant datastore(s) to search.
+
+        Examples:
+            "legal contracts, clauses, compliance documentation"
+            "incident reports, runbooks, system diagnostics"
+            "medical research papers, clinical trials, drug information"
+        """
         return ""
 
     @abstractmethod

@@ -195,7 +195,7 @@ def create_opensearch_store():
         verify_certs=config["verify_certs"],
         vector_field=config["vector_field"],
         search_fields=config["search_fields"],
-        hint=config["hint"],
+        datastore_description=config["hint"],
     )
 
 
@@ -209,7 +209,7 @@ def create_adb_store():
         user=config["user"],
         password=config["password"],
         table_name=config["table_name"],
-        hint=config["hint"],
+        datastore_description=config["hint"],
     )
 
 

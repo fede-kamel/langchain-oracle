@@ -40,7 +40,7 @@ def create_datastore_tools(
 
     Args:
         stores: Dict mapping names to VectorDataStore instances.
-            Each store should have a `hint` describing its contents.
+            Each store should have a `datastore_description` describing its contents.
         default_store: Fallback store name. Defaults to first store.
         embedding_model: LangChain embedding model for routing and search.
             Defaults to OCI GenAI Cohere embeddings.
@@ -66,13 +66,13 @@ def create_datastore_tools(
         ...         "docs": OpenSearch(
         ...             endpoint="https://opensearch:9200",
         ...             index_name="company-docs",
-        ...             hint="internal documentation, engineering policies",
+        ...             datastore_description="internal documentation, engineering policies",
         ...         ),
         ...         "medical": ADB(
         ...             dsn="research_low",
         ...             user="ADMIN",
         ...             password="...",
-        ...             hint="medical literature, clinical research papers",
+        ...             datastore_description="medical literature, clinical research papers",
         ...         ),
         ...     },
         ...     compartment_id="ocid1.compartment...",
@@ -115,7 +115,8 @@ def create_datastore_tools(
 
     # Build store list for descriptions
     store_list = ", ".join(
-        f"{name} ({s.hint})" if s.hint else name for name, s in stores.items()
+        f"{name} ({s.datastore_description})" if s.datastore_description else name
+        for name, s in stores.items()
     )
 
     # Create tools with injected dependencies

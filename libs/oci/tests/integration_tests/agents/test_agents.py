@@ -131,15 +131,15 @@ class TestDeepResearchAgentWithOpenSearch:
 class TestMultiStoreRouting:
     """Test store routing with multiple datastores."""
 
-    def test_routing_based_on_hints(self) -> None:
-        """Test that queries are routed based on hints."""
+    def test_routing_based_on_datastore_descriptions(self) -> None:
+        """Test that queries are routed based on datastore descriptions."""
         from langchain_oci.agents.datastores.tools import StoreSelector
 
         opensearch_store = create_opensearch_store()
         adb_store = create_adb_store()
 
-        opensearch_store._hint = "diagnostic patterns, troubleshooting"
-        adb_store._hint = "legal contracts, agreements"
+        opensearch_store.datastore_description = "diagnostic patterns, troubleshooting"
+        adb_store.datastore_description = "legal contracts, agreements"
 
         opensearch_config = get_opensearch_config()
         embedding_model = create_embedding_model(opensearch_config["embedding_model"])
@@ -155,17 +155,17 @@ class TestMultiStoreRouting:
         routed = selector.route("database connection errors")
         assert routed in stores
 
-    def test_tool_descriptions_include_hints(self) -> None:
-        """Verify tool descriptions include store hints."""
+    def test_tool_descriptions_include_datastore_descriptions(self) -> None:
+        """Verify tool descriptions include store datastore descriptions."""
         from langchain_oci import create_datastore_tools
 
         opensearch_config = get_opensearch_config()
 
         opensearch_store = create_opensearch_store()
-        opensearch_store._hint = "diagnostic patterns"
+        opensearch_store.datastore_description = "diagnostic patterns"
 
         adb_store = create_adb_store()
-        adb_store._hint = "legal contracts"
+        adb_store.datastore_description = "legal contracts"
 
         stores = {"diagnostics": opensearch_store, "legal": adb_store}
         embedding_model = create_embedding_model(opensearch_config["embedding_model"])
@@ -203,14 +203,14 @@ class TestResearchDocumentGeneration:
         if opensearch_is_reachable():
             config = get_opensearch_config()
             store = create_opensearch_store()
-            store._hint = config.get("hint", "")
+            store.datastore_description = config.get("hint", "")
             stores["opensearch"] = store
             embedding_model = create_embedding_model(config["embedding_model"])
 
         if adb_is_reachable():
             config = get_adb_config()
             store = create_adb_store()
-            store._hint = config.get("hint", "")
+            store.datastore_description = config.get("hint", "")
             stores["adb"] = store
             if embedding_model is None:
                 embedding_model = create_embedding_model(config["embedding_model"])

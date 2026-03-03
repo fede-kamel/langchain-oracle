@@ -30,7 +30,7 @@ class ADB(VectorDataStore):
         ...     user="ADMIN",
         ...     password="...",
         ...     wallet_location="~/.oracle-wallet",
-        ...     hint="sales data, revenue, customers",
+        ...     datastore_description="sales data, revenue, customers",
         ... )
         >>>
         >>> tools = create_datastore_tools(
@@ -45,7 +45,7 @@ class ADB(VectorDataStore):
     wallet_location: Optional[str] = None
     wallet_password: Optional[str] = None
     table_name: str = "VECTOR_DOCUMENTS"
-    hint: str = ""
+    datastore_description: str = ""
     chunk_on_write: bool = True
     chunking_params: Optional[dict[str, Any]] = None
 

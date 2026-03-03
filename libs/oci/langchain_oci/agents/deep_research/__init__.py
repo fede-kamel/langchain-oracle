@@ -15,13 +15,13 @@ Example:
     ...         "hr": OpenSearch(
     ...             endpoint="https://opensearch:9200",
     ...             index_name="hr-docs",
-    ...             hint="HR policies, PTO, vacation, benefits",
+    ...             datastore_description="HR policies, PTO, vacation, benefits",
     ...         ),
     ...         "sales": ADB(
     ...             dsn="mydb_low",
     ...             user="ADMIN",
     ...             password="...",
-    ...             hint="sales data, revenue, customers",
+    ...             datastore_description="sales data, revenue, customers",
     ...         ),
     ...     },
     ...     compartment_id="ocid1.compartment...",

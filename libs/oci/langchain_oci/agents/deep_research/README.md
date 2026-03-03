@@ -79,22 +79,27 @@ For the Object Storage example, retrieval is done through agent tools
 4. At runtime, what do I need to provide?
 - Indexed documents in a datastore, OCI/auth config, and the user prompt/query.
 
-## Hints And Routing (`hint=...`)
+## Datastore Descriptions And Routing (`datastore_description=...`)
 
-`hint` is datastore metadata used for auto-routing when you provide multiple
+`datastore_description` is datastore metadata used for auto-routing when you provide multiple
 stores.
 
 How it works:
-1. The SDK embeds each store hint once (for example, "SRE runbooks, incidents").
-2. For each query, it embeds the query and compares similarity with hint
-   embeddings.
+1. The SDK embeds each store description once at initialization (for example, "SRE runbooks, incidents").
+2. For each query, it embeds the query and compares similarity with description
+   embeddings using cosine similarity.
 3. The best-matching store is selected for `search`/`keyword_search`.
 
 Guidance:
-- Keep hints short and content-focused (domain, document types, topics).
-- Use distinct hints across stores to reduce routing ambiguity.
-- With one datastore, hint has no routing effect but still appears in tool/stats
+- Keep descriptions short and content-focused (domain, document types, topics).
+- Use distinct descriptions across stores to reduce routing ambiguity.
+- With one datastore, description has no routing effect but still appears in tool/stats
   descriptions.
+
+Examples of effective descriptions:
+- "incident reports, runbooks, system diagnostics, error logs"
+- "legal contracts, compliance documents, policy manuals"
+- "medical research papers, clinical trials, drug information"
 
 ## What You Need
 
@@ -145,7 +150,7 @@ store = ADB(
     user="ADMIN",
     password="***",
     table_name="VECTOR_DOCUMENTS",
-    hint="medical QA, legal clauses, web docs",
+    datastore_description="medical QA, legal clauses, web docs",
 )
 
 embedding_model = OCIGenAIEmbeddings(

@@ -17,7 +17,7 @@ class StoreSelector:
     """Routes queries to the best datastore using semantic similarity.
 
     When multiple datastores are available, the selector compares the query
-    embedding against pre-computed embeddings of each store's hint/description
+    embedding against pre-computed embeddings of each store's description
     to find the most relevant store.
     """
 
@@ -30,15 +30,15 @@ class StoreSelector:
         self.stores = stores
         self.embedding_model = embedding_model
         self.default_store = default_store
-        self._hint_embeddings: dict[str, np.ndarray] = {}
+        self._description_embeddings: dict[str, np.ndarray] = {}
         self._precompute_embeddings()
 
     def _precompute_embeddings(self) -> None:
-        """Pre-compute embeddings for store hints."""
+        """Pre-compute embeddings for store descriptions."""
         for name, store in self.stores.items():
-            hint_text = store.hint or name
-            embedding = self.embedding_model.embed_query(hint_text)
-            self._hint_embeddings[name] = np.array(embedding)
+            description_text = store.datastore_description or name
+            embedding = self.embedding_model.embed_query(description_text)
+            self._description_embeddings[name] = np.array(embedding)
 
     def _cosine_similarity(self, a: np.ndarray, b: np.ndarray) -> float:
         """Compute cosine similarity between two vectors."""
@@ -57,8 +57,8 @@ class StoreSelector:
         best_store = self.default_store
         best_score = -1.0
 
-        for name, hint_embedding in self._hint_embeddings.items():
-            score = self._cosine_similarity(query_embedding, hint_embedding)
+        for name, description_embedding in self._description_embeddings.items():
+            score = self._cosine_similarity(query_embedding, description_embedding)
             if score > best_score:
                 best_score = score
                 best_store = name
