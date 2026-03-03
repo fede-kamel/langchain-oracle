@@ -68,6 +68,7 @@ from __future__ import annotations
 import os
 
 from langchain_core.messages import HumanMessage
+
 from langchain_oci import OCIGenAIEmbeddings
 from langchain_oci.agents import ADB, create_deep_research_agent
 

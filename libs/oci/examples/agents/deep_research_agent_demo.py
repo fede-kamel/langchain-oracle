@@ -26,7 +26,8 @@ that you provide via environment variables.
   (runbooks, incidents, diagnostics), as hinted in `hint=...`.
 
 If you need an end-to-end ingestion pipeline example, see:
-- `examples/agents/deep_research_oci_storage.py` (reads datasets from OCI Object Storage)
+- `examples/agents/deep_research_oci_storage.py`
+  (reads datasets from OCI Object Storage)
 - `examples/agents/deep_research_adb_datastore.py` (queries pre-ingested ADB vectors)
 
 ## 2) Embedding model used
@@ -77,15 +78,8 @@ python examples/agents/deep_research_agent_demo.py
 import os
 import warnings
 
-warnings.filterwarnings("ignore")
-try:
-    import urllib3
-
-    urllib3.disable_warnings()
-except ImportError:
-    pass
-
 from langchain_core.messages import HumanMessage
+
 from langchain_oci import OCIGenAIEmbeddings
 from langchain_oci.agents import OpenSearch, create_deep_research_agent
 
@@ -100,8 +94,19 @@ SERVICE_ENDPOINT = os.environ.get(
 )
 
 
+def _suppress_tls_warnings() -> None:
+    warnings.filterwarnings("ignore")
+    try:
+        import urllib3
+
+        urllib3.disable_warnings()
+    except ImportError:
+        return
+
+
 def main():
     """Run the deep research agent demo."""
+    _suppress_tls_warnings()
     print("=" * 80)
     print("DEEP RESEARCH AGENT - AUTONOMOUS TOOL USAGE DEMO")
     print("=" * 80)
