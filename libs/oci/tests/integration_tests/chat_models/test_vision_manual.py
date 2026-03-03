@@ -17,6 +17,7 @@ Models tested:
 import io
 import os
 import sys
+from typing import Any, cast
 
 import requests
 from langchain_core.messages import HumanMessage
@@ -53,7 +54,7 @@ def download_image(url: str) -> bytes:
 def create_gradient_image(size: tuple = (300, 200)) -> bytes:
     """Create a gradient image using PIL."""
     img = Image.new("RGB", size)
-    pixels = img.load()
+    pixels = cast(Any, img.load())
 
     for x in range(size[0]):
         for y in range(size[1]):
@@ -71,7 +72,7 @@ def create_gradient_image(size: tuple = (300, 200)) -> bytes:
 def create_pattern_image(pattern: str = "stripes", size: tuple = (300, 200)) -> bytes:
     """Create a patterned image using PIL."""
     img = Image.new("RGB", size, color="white")
-    pixels = img.load()
+    pixels = cast(Any, img.load())
 
     if pattern == "stripes":
         # Vertical stripes
