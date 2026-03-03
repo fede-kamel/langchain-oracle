@@ -208,6 +208,7 @@ def create_adb_store():
         dsn=config["dsn"],
         user=config["user"],
         password=config["password"],
+        wallet_location=config["wallet_location"],
         table_name=config["table_name"],
         datastore_description=config["hint"],
     )

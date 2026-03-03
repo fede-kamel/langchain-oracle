@@ -283,17 +283,37 @@ class ADB(VectorDataStore):
         cursor = self._connection.cursor()
         cursor.execute(f"SELECT COUNT(*) FROM {self.table_name}")
         count = cursor.fetchone()[0]
-        cursor.execute(f"""
-            SELECT JSON_VALUE(metadata, '$.source') as source, COUNT(*) as cnt
-            FROM {self.table_name}
-            GROUP BY JSON_VALUE(metadata, '$.source')
-            ORDER BY cnt DESC
-            FETCH FIRST 10 ROWS ONLY
-        """)
-        sources = {
-            (row[0] if row[0] is not None else "unknown"): row[1]
-            for row in cursor.fetchall()
-        }
+
+        # Try to get sources - handle both metadata (JSON) and source (VARCHAR) columns
+        try:
+            cursor.execute(f"""
+                SELECT JSON_VALUE(metadata, '$.source') as source, COUNT(*) as cnt
+                FROM {self.table_name}
+                GROUP BY JSON_VALUE(metadata, '$.source')
+                ORDER BY cnt DESC
+                FETCH FIRST 10 ROWS ONLY
+            """)
+            sources = {
+                (row[0] if row[0] is not None else "unknown"): row[1]
+                for row in cursor.fetchall()
+            }
+        except Exception:
+            # Fallback to SOURCE column if metadata doesn't exist
+            try:
+                cursor.execute(f"""
+                    SELECT source, COUNT(*) as cnt
+                    FROM {self.table_name}
+                    GROUP BY source
+                    ORDER BY cnt DESC
+                    FETCH FIRST 10 ROWS ONLY
+                """)
+                sources = {
+                    (row[0] if row[0] is not None else "unknown"): row[1]
+                    for row in cursor.fetchall()
+                }
+            except Exception:
+                sources = {}
+
         cursor.close()
         return {
             "store": self.name,
