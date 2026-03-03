@@ -3,6 +3,9 @@
 
 """Deep Research Agent - deepagents-based research agent with OCI GenAI.
 
+Detailed usage and additional examples:
+`langchain_oci/agents/deep_research/README.md`
+
 Example:
     >>> from langchain_oci.agents.deep_research import create_deep_research_agent
     >>> from langchain_oci.agents import OpenSearch, ADB

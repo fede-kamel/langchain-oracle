@@ -323,6 +323,118 @@ llm_with_tools = llm.bind_tools(
 <sub>**Note:** Parallel tool calling is only supported for Llama 4+ models. Llama 3.x (including 3.3) and Cohere models will raise an error if this parameter is used.</sub>
 
 
+## Deep Research + Datastores (Integration Points)
+
+The deep-research integration in `langchain-oci` is built around datastore adapters (`ADB`, `OpenSearch`) and auto-generated tools (`stats`, `search`, `keyword_search`, `get_document`).
+
+Full deep-research guide with embedded examples:
+`langchain_oci/agents/deep_research/README.md`
+
+Why this is in scope for this SDK:
+- it extends OCI-LangChain integration primitives already exported by the package
+- it is shipped as an optional extra (`deep-research`) rather than mandatory core
+- it reuses existing model/embedding/datastore integrations already in `langchain-oci`
+
+PR rationale (review-ready):
+This belongs in `langchain-oracle/libs/oci` because it is integration code that
+connects OCI services (GenAI, ADB, OpenSearch, Object Storage) to LangChain
+agent abstractions. It does not add product-specific business logic; it exposes
+reusable SDK primitives (`create_deep_research_agent`, datastore adapters, tool
+factories), keeps heavy dependencies optional (`deep-research` extra), and is
+covered by unit/integration tests under `libs/oci/tests`. In short: this is an
+SDK integration layer feature, which is exactly this repository's purpose.
+
+### Data Loading Path for ADB
+
+For the deep-research examples in this repo, the ADB vector table is populated through these scripts:
+
+1. `scripts/upload_research_datasets.py`: downloads MedMCQA, PubMedQA, and CUAD from Hugging Face and uploads JSON files to OCI Object Storage buckets.
+2. `scripts/upload_large_datasets.py` (optional): uploads larger corpora (Wikipedia, C4, ArXiv) to OCI Object Storage.
+3. `scripts/vectorize_datasets.py`: reads bucket objects, generates embeddings, and writes rows into ADB table `VECTOR_DOCUMENTS`.
+
+### Embedding Model Used
+
+- Default datastore embedding model in `create_datastore_tools(...)`: `cohere.embed-english-v3.0` via `OCIGenAIEmbeddings`.
+- Same model is used in `scripts/vectorize_datasets.py` by default.
+- You can override by passing `embedding_model=...` to `create_deep_research_agent(...)` or `create_datastore_tools(...)`.
+
+### Search Implementation (ADB)
+
+- `ADB` (`langchain_oci.agents.datastores.vectorstores.adb.ADB`) is the datastore adapter for Oracle Autonomous Database.
+- Semantic retrieval is executed through datastore tools, especially `SearchTool`, which:
+  - creates query embeddings using the configured embedding model
+  - routes to the best datastore
+  - calls `store.search(...)` on that datastore (including `ADB.search(...)` for ADB-backed stores)
+
+You do not need to implement an extra ADB-specific search tool class for normal usage.
+
+### What You Need to Provide
+
+To use deep research with ADB, you typically need:
+
+1. A populated datastore (for example, ADB table with `title/content/source/embedding`).
+2. Datastore connection config (`dsn`, `user`, `password`, optional wallet).
+3. OCI GenAI config (`compartment_id`, `service_endpoint`, auth).
+4. The research prompt(s) for the agent.
+
+The input documents are provided during ingestion time; at runtime the agent mainly needs the prompt/query and datastore connection.
+
+Reference implementation in this repo:
+`examples/agents/deep_research_adb_datastore.py`
+
+### What `hint` Does
+
+`hint` is not indexed document content. It is store-level metadata used by the
+SDK to route queries across multiple datastores.
+
+- Each store hint is embedded once.
+- Query embeddings are compared against hint embeddings.
+- The best-scoring store is selected for search tools.
+
+Example:
+- Store A hint: "SRE incidents, runbooks, diagnostics"
+- Store B hint: "legal contracts, clauses, compliance"
+- Query "timeout troubleshooting" routes toward Store A.
+
+### Minimal ADB Integration Example
+
+```python
+from langchain_core.messages import HumanMessage
+from langchain_oci import OCIGenAIEmbeddings
+from langchain_oci.agents import ADB, create_deep_research_agent
+
+store = ADB(
+    dsn="mydb_low",
+    user="ADMIN",
+    password="***",
+    wallet_location="~/.oracle-wallet/mydb",  # optional
+    table_name="VECTOR_DOCUMENTS",
+    hint="medical QA, legal clauses, web docs",
+)
+
+embedding_model = OCIGenAIEmbeddings(
+    model_id="cohere.embed-english-v3.0",
+    compartment_id="ocid1.compartment...",
+    service_endpoint="https://inference.generativeai.us-chicago-1.oci.oraclecloud.com",
+    auth_type="API_KEY",
+)
+
+agent = create_deep_research_agent(
+    datastores={"research": store},
+    embedding_model=embedding_model,  # explicit, same as default
+    model_id="google.gemini-2.5-pro",
+    compartment_id="ocid1.compartment...",
+    service_endpoint="https://inference.generativeai.us-chicago-1.oci.oraclecloud.com",
+    auth_type="API_KEY",
+)
+
+result = agent.invoke(
+    {"messages": [HumanMessage(content="Summarize evidence for leukocytosis treatment")]}
+)
+print(result["messages"][-1].content)
+```
+
+
 ## OCI Data Science Model Deployment Examples
 
 ### 1. Use a Chat Model
