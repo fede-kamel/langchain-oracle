@@ -122,6 +122,7 @@ module = [
     "deepagents.*",
     "oracledb.*",
     "opensearchpy.*",
+    "langchain_oci.tools",
     "langchain_oci.tools.*",
 ]
 ignore_missing_imports = true

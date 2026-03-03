@@ -2,6 +2,7 @@
 # Copyright (c) 2026 Oracle and/or its affiliates.
 # Licensed under the Universal Permissive License v 1.0
 # ruff: noqa: T201, I001
+# mypy: disable-error-code=attr-defined
 
 """Deep Research Agent with OCI Object Storage.
 
@@ -73,7 +74,7 @@ import os
 from langchain_core.messages import HumanMessage
 
 from langchain_oci.agents import create_deep_research_agent
-from langchain_oci.tools import create_oci_object_storage_tools  # type: ignore[attr-defined]
+from langchain_oci.tools import create_oci_object_storage_tools
 
 # Configuration
 COMPARTMENT_ID = os.environ.get(
