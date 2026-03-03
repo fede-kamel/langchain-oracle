@@ -7,6 +7,14 @@ It supports:
 - optional datastore-backed retrieval (`ADB`, `OpenSearch`)
 - optional custom tools
 
+## Python Compatibility
+
+Deep research support is provided via the optional extra:
+- `pip install langchain-oci[deep-research]`
+
+Current compatibility for the `deep-research` extra is:
+- Python `>=3.11,<3.14` (driven by `deepagents` support bounds)
+
 ## Why This Is In Scope For `langchain-oci`
 
 This functionality is in scope for this SDK because it is an OCI-to-LangChain
@@ -51,6 +59,8 @@ The deep-research examples use repository scripts to make provenance explicit:
    - writes vectors into ADB table `VECTOR_DOCUMENTS`
 
 Runtime examples then perform retrieval/synthesis over these indexed documents.
+For the Object Storage example, retrieval is done through agent tools
+(`list/read/search` on objects), not through SQL.
 
 ## Common Questions
 
@@ -65,8 +75,6 @@ Runtime examples then perform retrieval/synthesis over these indexed documents.
 3. Is there an additional ADB search class I must implement?
 - No, not for the canonical path. Use `ADB` + `create_deep_research_agent(...)`
   with `datastores=...`; datastore tools are created automatically.
-- A custom tool class is only needed for custom behavior (see
-  `deep_research_vector_search.py`).
 
 4. At runtime, what do I need to provide?
 - Indexed documents in a datastore, OCI/auth config, and the user prompt/query.
@@ -203,9 +211,14 @@ agent = create_deep_research_agent(
 )
 ```
 
+## Async Cleanup Note
+
+If your workflow keeps agents/models alive across many async calls, explicitly
+close the underlying model client when done to avoid unclosed HTTP session
+warnings.
+
 ## Runnable Examples in This Repo
 
 - `libs/oci/examples/agents/deep_research_adb_datastore.py`
 - `libs/oci/examples/agents/deep_research_agent_demo.py`
-- `libs/oci/examples/agents/deep_research_vector_search.py`
 - `libs/oci/examples/agents/deep_research_oci_storage.py`
