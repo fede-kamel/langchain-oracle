@@ -122,6 +122,9 @@ module = [
     "deepagents.*",
     "oracledb.*",
     "opensearchpy.*",
+    "PIL.*",
+    "langchain_community.vectorstores.utils",
+    "langchain_oracledb.*",
     "langchain_oci.tools",
     "langchain_oci.tools.*",
 ]

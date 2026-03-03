@@ -83,13 +83,13 @@ class ADB(VectorDataStore):
     def _initialize_oraclevs_backend(self) -> None:
         try:
             from langchain_community.vectorstores.utils import DistanceStrategy
-            from langchain_oracledb.document_loaders.oracleai import (  # type: ignore[import-untyped]
+            from langchain_oracledb.document_loaders.oracleai import (
                 OracleTextSplitter,
             )
-            from langchain_oracledb.retrievers import (  # type: ignore[import-untyped]
+            from langchain_oracledb.retrievers import (
                 OracleTextSearchRetriever,
             )
-            from langchain_oracledb.vectorstores.oraclevs import (  # type: ignore[import-untyped]
+            from langchain_oracledb.vectorstores.oraclevs import (
                 OracleVS,
             )
         except ImportError as e:

@@ -66,7 +66,7 @@ python examples/agents/deep_research_vector_search.py
 """
 
 import os
-from typing import Any
+from typing import Any, Optional, Tuple
 
 from langchain_core.messages import HumanMessage
 from langchain_core.tools import BaseTool
@@ -108,7 +108,7 @@ class VectorSearchTool(BaseTool):
         import json
 
         # Parse optional dataset filter
-        dataset_filter: tuple[str, ...] | None = None
+        dataset_filter: Optional[Tuple[str, ...]] = None
         if ":" in query:
             prefix, rest = query.split(":", 1)
             prefix = prefix.strip().lower()
