@@ -66,6 +66,7 @@ python examples/agents/deep_research_vector_search.py
 """
 
 import os
+from typing import Any
 
 from langchain_core.messages import HumanMessage
 from langchain_core.tools import BaseTool
@@ -98,8 +99,8 @@ class VectorSearchTool(BaseTool):
         "or 'legal: termination clause'."
     )
 
-    connection: object = Field(default=None, exclude=True)
-    embedding_model: object = Field(default=None, exclude=True)
+    connection: Any = Field(default=None, exclude=True)
+    embedding_model: Any = Field(default=None, exclude=True)
     top_k: int = 5
 
     def _run(self, query: str) -> str:
@@ -107,7 +108,7 @@ class VectorSearchTool(BaseTool):
         import json
 
         # Parse optional dataset filter
-        dataset_filter = None
+        dataset_filter: tuple[str, ...] | None = None
         if ":" in query:
             prefix, rest = query.split(":", 1)
             prefix = prefix.strip().lower()

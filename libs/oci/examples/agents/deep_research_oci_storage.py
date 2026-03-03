@@ -73,7 +73,7 @@ import os
 from langchain_core.messages import HumanMessage
 
 from langchain_oci.agents import create_deep_research_agent
-from langchain_oci.tools import create_oci_object_storage_tools
+from langchain_oci.tools import create_oci_object_storage_tools  # type: ignore[attr-defined]
 
 # Configuration
 COMPARTMENT_ID = os.environ.get(

@@ -85,7 +85,9 @@ def main() -> None:
     service_endpoint = os.environ.get("OCI_SERVICE_ENDPOINT")
     if not service_endpoint:
         region = os.environ.get("OCI_REGION", "us-chicago-1")
-        service_endpoint = f"https://inference.generativeai.{region}.oci.oraclecloud.com"
+        service_endpoint = (
+            f"https://inference.generativeai.{region}.oci.oraclecloud.com"
+        )
     auth_profile = os.environ.get("OCI_AUTH_PROFILE", "DEFAULT")
 
     adb_store = ADB(
