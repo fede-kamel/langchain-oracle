@@ -180,4 +180,9 @@ def create_deep_research_agent(
     if debug:
         agent_kwargs["debug"] = True
 
-    return create_deep_agent(**agent_kwargs)
+    compiled = create_deep_agent(**agent_kwargs)
+    # Expose the underlying OCI chat model for explicit cleanup in long-lived
+    # processes (and in our integration tests). This avoids aiohttp
+    # "Unclosed client session" warnings when async pooling is used.
+    setattr(compiled, "_oci_llm", llm)
+    return compiled

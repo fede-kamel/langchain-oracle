@@ -3,7 +3,7 @@
 """Unit tests for document chunking support in OracleVS."""
 
 from types import MethodType
-from typing import Any, List
+from typing import Any, List, cast
 
 from langchain_core.documents import Document
 
@@ -21,9 +21,7 @@ def test_prepare_texts_from_documents_without_splitter() -> None:
         Document(page_content="beta", metadata={"doc_id": "B"}),
     ]
 
-    texts, metadatas, source_doc_indices = OracleVS._prepare_texts_from_documents(
-        docs
-    )
+    texts, metadatas, source_doc_indices = OracleVS._prepare_texts_from_documents(docs)
 
     assert texts == ["alpha", "beta"]
     assert metadatas == [{"doc_id": "A"}, {"doc_id": "B"}]
@@ -62,7 +60,7 @@ def test_add_documents_expands_ids_per_chunk() -> None:
         return ids
 
     vs = OracleVS.__new__(OracleVS)
-    vs.add_texts = MethodType(_fake_add_texts, vs)
+    cast(Any, vs).add_texts = MethodType(_fake_add_texts, vs)
 
     returned_ids = vs.add_documents(
         docs, text_splitter=splitter, ids=["doc-A", "doc-B"]
@@ -71,4 +69,3 @@ def test_add_documents_expands_ids_per_chunk() -> None:
     assert captured["texts"] == ["a1", "a2", "b1"]
     assert captured["ids"] == ["doc-A#chunk-0", "doc-A#chunk-1", "doc-B#chunk-0"]
     assert returned_ids == ["doc-A#chunk-0", "doc-A#chunk-1", "doc-B#chunk-0"]
-

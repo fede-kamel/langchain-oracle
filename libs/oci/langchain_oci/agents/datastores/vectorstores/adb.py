@@ -83,9 +83,15 @@ class ADB(VectorDataStore):
     def _initialize_oraclevs_backend(self) -> None:
         try:
             from langchain_community.vectorstores.utils import DistanceStrategy
-            from langchain_oracledb.document_loaders.oracleai import OracleTextSplitter
-            from langchain_oracledb.retrievers import OracleTextSearchRetriever
-            from langchain_oracledb.vectorstores.oraclevs import OracleVS
+            from langchain_oracledb.document_loaders.oracleai import (  # type: ignore[import-untyped]
+                OracleTextSplitter,
+            )
+            from langchain_oracledb.retrievers import (  # type: ignore[import-untyped]
+                OracleTextSearchRetriever,
+            )
+            from langchain_oracledb.vectorstores.oraclevs import (  # type: ignore[import-untyped]
+                OracleVS,
+            )
         except ImportError as e:
             raise ImportError(
                 "langchain-oracledb required for ADB datastore integration. "
@@ -112,18 +118,21 @@ class ADB(VectorDataStore):
                 "max": 20,
                 "normalize": "all",
             }
-            self._write_text_splitter = OracleTextSplitter(conn=self._connection, params=params)
+            self._write_text_splitter = OracleTextSplitter(
+                conn=self._connection,
+                params=params,
+            )
 
     def _ingest_document(self, document: Document, doc_id: str) -> None:
         if self._write_text_splitter is not None:
-            self._oraclevs.add_documents(  # type: ignore[union-attr]
+            self._oraclevs.add_documents(
                 [document],
                 text_splitter=self._write_text_splitter,
                 ids=[doc_id],
             )
             return
 
-        self._oraclevs.add_texts(  # type: ignore[union-attr]
+        self._oraclevs.add_texts(
             texts=[document.page_content],
             metadatas=[document.metadata],
             ids=[doc_id],
@@ -135,9 +144,11 @@ class ADB(VectorDataStore):
         return str(value) if value else ""
 
     def search(self, query: str, embedding: list[float], top_k: int) -> list[dict]:
-        docs_and_scores = self._oraclevs.similarity_search_by_vector_with_relevance_scores(  # type: ignore[union-attr]  # noqa: E501
-            embedding=embedding,
-            k=top_k,
+        docs_and_scores = (
+            self._oraclevs.similarity_search_by_vector_with_relevance_scores(  # noqa: E501
+                embedding=embedding,
+                k=top_k,
+            )
         )
         return [
             {
@@ -151,8 +162,8 @@ class ADB(VectorDataStore):
         ]
 
     def keyword_search(self, query: str, top_k: int) -> list[dict]:
-        self._text_retriever.k = top_k  # type: ignore[union-attr]
-        docs = self._text_retriever.invoke(query)  # type: ignore[union-attr]
+        self._text_retriever.k = top_k
+        docs = self._text_retriever.invoke(query)
         return [
             {
                 "id": (doc.metadata or {}).get("id"),
@@ -236,7 +247,9 @@ class ADB(VectorDataStore):
         if not current:
             return False
         new_title = title if title is not None else str(current.get("title", ""))
-        new_content = content if content is not None else str(current.get("content", ""))
+        new_content = (
+            content if content is not None else str(current.get("content", ""))
+        )
         new_source = source if source is not None else str(current.get("source", ""))
         self.delete(document_id)
         self._ingest_document(
@@ -255,7 +268,10 @@ class ADB(VectorDataStore):
     def delete(self, document_id: str | int) -> bool:
         cursor = self._connection.cursor()
         cursor.execute(
-            f"DELETE FROM {self.table_name} WHERE JSON_VALUE(metadata, '$.id') = :doc_id",
+            (
+                f"DELETE FROM {self.table_name} "
+                "WHERE JSON_VALUE(metadata, '$.id') = :doc_id"
+            ),
             {"doc_id": str(document_id)},
         )
         self._connection.commit()

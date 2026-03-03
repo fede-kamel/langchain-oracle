@@ -1251,7 +1251,12 @@ class OracleVS(VectorStore):
                 )
 
             if text_splitter is None:
-                return self.add_texts(texts=texts, metadatas=metadatas, ids=ids, **kwargs)
+                return self.add_texts(
+                    texts=texts,
+                    metadatas=metadatas,
+                    ids=ids,
+                    **kwargs,
+                )
 
             id_counts: Dict[int, int] = {}
             chunk_ids: List[str] = []

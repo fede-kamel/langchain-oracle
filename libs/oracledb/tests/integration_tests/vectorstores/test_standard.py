@@ -31,7 +31,7 @@ class TestOracleVSStandardSync(VectorStoreIntegrationTests):
         return False
 
     @pytest.fixture()
-    def vectorstore(self) -> Generator[VectorStore, None, None]:  # type: ignore[override]
+    def vectorstore(self) -> Generator[VectorStore, None, None]:
         """Get an empty vectorstore for unit tests."""
         conn = oracledb.connect(user=username, password=password, dsn=dsn)
         drop_table_purge(conn, "standard_tests")
@@ -51,7 +51,7 @@ class TestOracleVSOracleEmbeddingsStandardSync(VectorStoreIntegrationTests):
         return False
 
     @pytest.fixture()
-    def vectorstore(self) -> Generator[VectorStore, None, None]:  # type: ignore[override]
+    def vectorstore(self) -> Generator[VectorStore, None, None]:
         """Get an empty vectorstore for unit tests."""
         conn = oracledb.connect(user=username, password=password, dsn=dsn)
         drop_table_purge(conn, "standard_tests")

@@ -37,10 +37,12 @@ pytest tests/integration_tests/agents/test_deep_agent_integration.py \
 ```
 """
 
+import asyncio
 import os
 from typing import Any
 
 import pytest
+import pytest_asyncio
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
@@ -206,7 +208,7 @@ class TestOCIDeepAgentIntegration:
         """Create a configured deep agent for testing."""
         from langchain_oci import create_deep_research_agent
 
-        return create_deep_research_agent(
+        agent = create_deep_research_agent(
             tools=[search_knowledge_base, get_statistics, analyze_trends],
             model_id="google.gemini-2.5-pro",
             compartment_id=compartment_id,
@@ -221,6 +223,12 @@ class TestOCIDeepAgentIntegration:
             temperature=0.3,
             max_tokens=2048,
         )
+        try:
+            yield agent
+        finally:
+            llm = getattr(agent, "_oci_llm", None)
+            if llm is not None and hasattr(llm, "aclose"):
+                asyncio.run(llm.aclose())
 
     def test_simple_research_task(self, agent: Any) -> None:
         """Test agent can complete a simple research task."""
@@ -375,7 +383,12 @@ def test_research_task_completion(task: dict) -> None:
         max_tokens=2048,
     )
 
-    result = agent.invoke({"messages": [HumanMessage(content=task["query"])]})
+    try:
+        result = agent.invoke({"messages": [HumanMessage(content=task["query"])]})
+    finally:
+        llm = getattr(agent, "_oci_llm", None)
+        if llm is not None and hasattr(llm, "aclose"):
+            asyncio.run(llm.aclose())
 
     # Verify response
     assert "messages" in result
@@ -428,8 +441,8 @@ class TestOCIDeepAgentAsyncIntegration:
         """Get auth profile from environment."""
         return os.environ.get("OCI_CONFIG_PROFILE", "API_KEY_AUTH")
 
-    @pytest.fixture
-    def async_agent(
+    @pytest_asyncio.fixture
+    async def async_agent(
         self,
         compartment_id: str,
         service_endpoint: str,
@@ -438,7 +451,7 @@ class TestOCIDeepAgentAsyncIntegration:
         """Create a configured deep agent for async testing."""
         from langchain_oci import create_deep_research_agent
 
-        return create_deep_research_agent(
+        agent = create_deep_research_agent(
             tools=[search_knowledge_base],
             model_id="google.gemini-2.5-pro",
             compartment_id=compartment_id,
@@ -448,6 +461,12 @@ class TestOCIDeepAgentAsyncIntegration:
             temperature=0.3,
             max_tokens=1024,
         )
+        try:
+            yield agent
+        finally:
+            llm = getattr(agent, "_oci_llm", None)
+            if llm is not None and hasattr(llm, "aclose"):
+                await llm.aclose()
 
     @pytest.mark.asyncio
     async def test_async_invoke(self, async_agent: Any) -> None:
@@ -530,13 +549,17 @@ def test_model_variants(model_id: str) -> None:
         temperature=0.3,
         max_tokens=1024,
     )
+    try:
+        result = agent.invoke(
+            {"messages": [HumanMessage(content="What is machine learning?")]}
+        )
 
-    result = agent.invoke(
-        {"messages": [HumanMessage(content="What is machine learning?")]}
-    )
-
-    # Verify we got a response
-    assert "messages" in result
-    assert len(result["messages"]) > 1
-    final_message = result["messages"][-1]
-    assert final_message.content, f"Model {model_id} should produce a response"
+        # Verify we got a response
+        assert "messages" in result
+        assert len(result["messages"]) > 1
+        final_message = result["messages"][-1]
+        assert final_message.content, f"Model {model_id} should produce a response"
+    finally:
+        llm = getattr(agent, "_oci_llm", None)
+        if llm is not None and hasattr(llm, "aclose"):
+            asyncio.run(llm.aclose())

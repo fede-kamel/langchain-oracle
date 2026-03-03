@@ -190,6 +190,7 @@ class TestADBDataStore:
     def test_search_delegates_to_oraclevs_backend(self) -> None:
         """Test ADB delegates vector search to OracleVS when enabled."""
         from langchain_core.documents import Document
+
         from langchain_oci.agents.datastores.vectorstores import ADB
 
         store = ADB(

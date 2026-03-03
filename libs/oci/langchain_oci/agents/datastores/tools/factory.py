@@ -187,8 +187,14 @@ def _create_default_embedding_model(
             f"https://inference.generativeai.{region}.oci.oraclecloud.com"
         )
 
+    # Tenancies differ in which models are enabled. Prefer env configuration
+    # and keep a conservative fallback for local/dev.
+    model_id = os.environ.get("OCI_EMBEDDING_MODEL_ID") or os.environ.get(
+        "OCI_EMBEDDING_MODEL"
+    )
+
     return OCIGenAIEmbeddings(
-        model_id="cohere.embed-v4.0",
+        model_id=model_id or "cohere.embed-v4.0",
         compartment_id=compartment_id,
         service_endpoint=service_endpoint,
         auth_type=auth_type,
