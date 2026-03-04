@@ -103,7 +103,8 @@ def main() -> None:
             "max": 20,
             "normalize": "all",
         },
-        # datastore_description guides query routing when multiple datastores are configured
+        # datastore_description guides query routing when
+        # multiple datastores are configured
         datastore_description=(
             "vectorized research documents. Contains title/content/source/embedding "
             "for semantic and keyword retrieval."

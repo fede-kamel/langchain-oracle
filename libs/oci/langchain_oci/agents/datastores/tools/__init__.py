@@ -10,7 +10,11 @@ queries to the best datastore based on semantic similarity.
 Example:
     >>> from langchain_oci.agents import OpenSearch, create_datastore_tools
     >>> tools = create_datastore_tools(
-    ...     stores={"docs": OpenSearch(endpoint="...", datastore_description="documentation")},
+    ...     stores={
+    ...         "docs": OpenSearch(
+    ...             endpoint="...", datastore_description="documentation"
+    ...         )
+    ...     },
     ...     compartment_id="ocid1.compartment...",
     ... )
 """

@@ -66,13 +66,17 @@ def create_datastore_tools(
         ...         "docs": OpenSearch(
         ...             endpoint="https://opensearch:9200",
         ...             index_name="company-docs",
-        ...             datastore_description="internal documentation, engineering policies",
+        ...             datastore_description=(
+        ...                 "internal documentation, engineering policies"
+        ...             ),
         ...         ),
         ...         "medical": ADB(
         ...             dsn="research_low",
         ...             user="ADMIN",
         ...             password="...",
-        ...             datastore_description="medical literature, clinical research papers",
+        ...             datastore_description=(
+        ...                 "medical literature, clinical research papers"
+        ...             ),
         ...         ),
         ...     },
         ...     compartment_id="ocid1.compartment...",

@@ -132,8 +132,11 @@ def main():
         verify_certs=False,
         vector_field="vector_field",
         search_fields=["text", "metadata.title", "metadata.content"],
-        # datastore_description guides query routing when multiple datastores are configured
-        datastore_description="SRE investigations, diagnostic patterns, error messages, runbooks",
+        # datastore_description guides query routing when
+        # multiple datastores are configured
+        datastore_description=(
+            "SRE investigations, diagnostic patterns, error messages, runbooks"
+        ),
     )
 
     print("   - SRE datastore (OpenSearch): ready")
