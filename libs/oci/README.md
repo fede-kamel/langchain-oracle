@@ -368,27 +368,69 @@ For the deep-research examples in this repo, the ADB vector table is populated t
 
 ### Search Implementation (ADB)
 
-- `ADB` (`langchain_oci.agents.datastores.vectorstores.adb.ADB`) is the datastore adapter for Oracle Autonomous Database.
-- `ADB` uses `langchain-oracledb` (`OracleVS`) for vector operations.
-- Semantic retrieval is executed through datastore tools, especially `SearchTool`, which:
-  - creates query embeddings using the configured embedding model
-  - routes to the best datastore
-  - calls `store.search(...)` on that datastore (including `ADB.search(...)` for ADB-backed stores)
+**The `ADB` class is a wrapper/adapter, NOT a replacement for OracleVS:**
+
+- `ADB` internally uses `OracleVS` from `langchain-oracledb` for all vector operations
+- `ADB` internally uses `OracleTextSplitter` from `langchain-oracledb` for document chunking
+- `ADB` internally uses `OracleTextSearchRetriever` from `langchain-oracledb` for keyword search
+
+**Document Chunking (enabled by default):**
+
+```python
+store = ADB(
+    dsn="mydb_low",
+    user="ADMIN",
+    password="***",
+    chunk_on_write=True,  # Default: True
+    chunking_params={
+        "split": "sentence",  # Split by sentences
+        "max": 20,            # Max 20 sentences per chunk
+        "normalize": "all",   # Normalize text
+    }
+)
+```
+
+When `chunk_on_write=True` (default), documents are automatically split into chunks using Oracle's native text splitter. Each chunk:
+- Gets its own embedding
+- Is stored as a separate row in the vector table
+- Enables precise retrieval of relevant document sections
+
+This is optimal for large documents (e.g., 800-page legal documents) - each page/section becomes a searchable chunk.
+
+**Semantic Retrieval:**
+
+Semantic retrieval is executed through datastore tools, especially `SearchTool`, which:
+- creates query embeddings using the configured embedding model
+- routes to the best datastore
+- calls `store.search(...)` on that datastore (including `ADB.search(...)` for ADB-backed stores)
 
 You do not need to implement an extra ADB-specific search tool class for normal usage.
 
 ### What You Need to Provide
 
-To use deep research with ADB, you typically need:
+**At Ingestion Time (one-time setup):**
 
-1. A populated datastore with OracleVS schema (`id/embedding/text/metadata`).
-2. Datastore connection config (`dsn`, `user`, `password`, optional wallet).
-3. OCI GenAI config (`compartment_id`, `service_endpoint`, auth).
-4. The research prompt(s) for the agent.
+1. **Load documents into ADB** using the repository scripts:
+   - `scripts/upload_research_datasets.py` - Download datasets from Hugging Face
+   - `scripts/vectorize_datasets.py` - Generate embeddings and populate ADB
 
-The input documents are provided during ingestion time; at runtime the agent mainly needs the prompt/query and datastore connection.
+   Or use your own ingestion pipeline that populates the OracleVS table schema (`id/embedding/text/metadata`).
 
-Reference implementation in this repo:
+2. **Ensure consistent embedding model**: Use the same embedding model for both ingestion and runtime queries (default: `cohere.embed-v4.0`).
+
+**At Runtime (every query):**
+
+1. **ADB connection config**: `dsn`, `user`, `password`, optional `wallet_location`
+2. **OCI GenAI config**: `compartment_id`, `service_endpoint`, `auth_type`, `auth_profile`
+3. **Your research prompt/query**: The question you want the agent to answer
+
+**You do NOT need to:**
+- ❌ Implement a custom ADB search class (handled by `ADB` adapter)
+- ❌ Manually create search tools (auto-generated from `datastores=...`)
+- ❌ Handle chunking manually (automatic with `chunk_on_write=True`)
+- ❌ Import from `langchain-oracledb` directly (handled internally by `ADB`)
+
+**Complete working example:**
 `examples/agents/deep_research_adb_datastore.py`
 
 ### What `datastore_description` Does
