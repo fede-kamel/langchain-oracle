@@ -31,4 +31,4 @@ echo "Profile: $OCI_CONFIG_PROFILE"
 echo "Region: $OCI_REGION"
 echo ""
 
-pytest integration_tests/oci/ -v "$@"
+pytest . -v "$@"
