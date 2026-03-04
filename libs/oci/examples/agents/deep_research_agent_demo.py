@@ -152,7 +152,7 @@ def main():
         compartment_id=COMPARTMENT_ID,
         service_endpoint=SERVICE_ENDPOINT,
         auth_type="API_KEY",
-        auth_profile=os.environ.get("OCI_AUTH_PROFILE", "API_KEY_AUTH"),
+        auth_profile=os.environ.get("OCI_AUTH_PROFILE", "DEFAULT"),
     )
 
     # The agent automatically creates tools from datastores and uses them
@@ -163,7 +163,7 @@ def main():
         compartment_id=COMPARTMENT_ID,
         service_endpoint=SERVICE_ENDPOINT,
         auth_type="API_KEY",
-        auth_profile=os.environ.get("OCI_AUTH_PROFILE", "API_KEY_AUTH"),
+        auth_profile=os.environ.get("OCI_AUTH_PROFILE", "DEFAULT"),
         temperature=0.4,
         max_tokens=8000,
         top_k=10,

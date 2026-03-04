@@ -90,7 +90,7 @@ COMPARTMENT_ID = os.environ.get(
 GENAI_REGION = os.environ.get("OCI_REGION", "us-chicago-1")
 STORAGE_REGION = "us-ashburn-1"
 NAMESPACE = "id0qhv5yj7ke"
-AUTH_PROFILE = "API_KEY_AUTH"
+AUTH_PROFILE = os.environ.get("OCI_AUTH_PROFILE", "DEFAULT")
 
 # Bucket names
 MEDICAL_BUCKET = "deep-research-medical"

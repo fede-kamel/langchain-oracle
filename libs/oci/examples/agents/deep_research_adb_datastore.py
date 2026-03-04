@@ -60,7 +60,7 @@ Optional:
 - ADB_WALLET_LOCATION
 - ADB_WALLET_PASSWORD
 - ADB_TABLE_NAME (default: VECTOR_DOCUMENTS)
-- OCI_AUTH_PROFILE (default: API_KEY_AUTH)
+- OCI_AUTH_PROFILE
 """
 
 from __future__ import annotations
@@ -88,7 +88,7 @@ def main() -> None:
         service_endpoint = (
             f"https://inference.generativeai.{region}.oci.oraclecloud.com"
         )
-    auth_profile = os.environ.get("OCI_AUTH_PROFILE", "API_KEY_AUTH")
+    auth_profile = os.environ.get("OCI_AUTH_PROFILE", "DEFAULT")
 
     adb_store = ADB(
         dsn=_required_env("ADB_DSN"),
