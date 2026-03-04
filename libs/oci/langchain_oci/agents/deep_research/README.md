@@ -140,11 +140,14 @@ Important:
 
 ## Example: ADB Datastore (Auto Tools)
 
+**Prerequisites:** `pip install langchain-oci langchain-oracledb`
+
 ```python
 from langchain_core.messages import HumanMessage
 from langchain_oci import OCIGenAIEmbeddings
 from langchain_oci.agents import ADB, create_deep_research_agent
 
+# Requires langchain-oracledb for Oracle Database connectivity
 store = ADB(
     dsn="mydb_low",
     user="ADMIN",

@@ -5,8 +5,16 @@ This package contains the LangChain integrations with oci.
 ## Installation
 
 ```bash
+# Base installation
 pip install -U langchain-oci
+
+# With deep research support
+pip install -U langchain-oci[deep-research]
+
+# With ADB datastore support (requires Oracle Database)
+pip install -U langchain-oci langchain-oracledb
 ```
+
 All integrations in this package assume that you have the credentials setup to connect with oci services.
 
 ---
@@ -399,11 +407,14 @@ Example:
 
 ### Minimal ADB Integration Example
 
+**Prerequisites:** `pip install langchain-oci langchain-oracledb`
+
 ```python
 from langchain_core.messages import HumanMessage
 from langchain_oci import OCIGenAIEmbeddings
 from langchain_oci.agents import ADB, create_deep_research_agent
 
+# ADB datastore requires langchain-oracledb
 store = ADB(
     dsn="mydb_low",
     user="ADMIN",
