@@ -563,3 +563,58 @@ def test_model_variants(model_id: str) -> None:
         llm = getattr(agent, "_oci_llm", None)
         if llm is not None and hasattr(llm, "aclose"):
             asyncio.run(llm.aclose())
+
+
+@pytest.mark.requires("oci", "langgraph", "deepagents")
+@pytest.mark.skipif(
+    skip_if_no_oci_credentials(),
+    reason="OCI credentials not available",
+)
+@pytest.mark.skipif(
+    skip_if_no_deepagents(),
+    reason="deepagents package not installed",
+)
+def test_openai_gpt5_tool_calling() -> None:
+    """Test GPT-5 deep research agent executes tool calls end-to-end."""
+    from langchain_oci import create_deep_research_agent
+
+    compartment_id = os.environ.get("OCI_COMPARTMENT_ID", "")
+    region = os.environ.get("OCI_REGION", "us-chicago-1")
+    service_endpoint = f"https://inference.generativeai.{region}.oci.oraclecloud.com"
+
+    agent = create_deep_research_agent(
+        tools=[search_knowledge_base],
+        model_id="openai.gpt-5",
+        compartment_id=compartment_id,
+        service_endpoint=service_endpoint,
+        auth_type="API_KEY",
+        auth_profile="API_KEY_AUTH",
+        temperature=0.3,
+        max_tokens=1024,
+    )
+    try:
+        result = agent.invoke(
+            {
+                "messages": [
+                    HumanMessage(
+                        content="What is machine learning? Use the research tool first."
+                    )
+                ]
+            }
+        )
+
+        assert "messages" in result
+        message_types = [type(m).__name__ for m in result["messages"]]
+        assert "ToolMessage" in message_types, (
+            "GPT-5 deep research agent should execute at least one tool call. "
+            f"Message types: {message_types}"
+        )
+
+        final_message = result["messages"][-1]
+        assert getattr(
+            final_message, "content", ""
+        ), "Final message should not be empty"
+    finally:
+        llm = getattr(agent, "_oci_llm", None)
+        if llm is not None and hasattr(llm, "aclose"):
+            asyncio.run(llm.aclose())
