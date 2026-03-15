@@ -31,11 +31,28 @@ class SearchTool(DatastoreTool):
     def _run(self, query: str) -> str:
         store_name = self.selector.route(query)
         store = self.selector.get_store(store_name)
+        self._log_start(
+            "semantic search",
+            query=query,
+            store_name=store_name,
+            top_k=self.top_k,
+        )
 
         try:
             embedding = self.selector.embedding_model.embed_query(query)
             raw_results = store.search(query, embedding, self.top_k)
             results = self._parse_results(raw_results)
+            self._log_success(
+                "semantic search",
+                store_name=store_name,
+                result_count=len(results),
+            )
             return self.formatter.format_search_results(results, store_name, "semantic")
         except Exception as e:
+            self._log_error(
+                "semantic search",
+                query=query,
+                store_name=store_name,
+                error=e,
+            )
             return self.formatter.format_error("semantic search", e)

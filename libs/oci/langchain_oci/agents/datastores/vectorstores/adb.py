@@ -69,6 +69,14 @@ class ADB(VectorDataStore):
         if self.wallet_location:
             config_dir = os.path.expanduser(self.wallet_location)
 
+        self.logger.info(
+            "Connecting ADB datastore table=%s dsn=%s wallet=%s user=%s",
+            self.table_name,
+            self.dsn,
+            config_dir or "<none>",
+            self.user,
+        )
+
         self._connection = oracledb.connect(
             user=self.user,
             password=self.password,
@@ -79,6 +87,11 @@ class ADB(VectorDataStore):
         )
         self._embedding_model = embedding_model
         self._initialize_oraclevs_backend()
+        self.logger.info(
+            "ADB datastore connected table=%s dsn=%s",
+            self.table_name,
+            self.dsn,
+        )
 
     def _initialize_oraclevs_backend(self) -> None:
         try:
@@ -97,6 +110,13 @@ class ADB(VectorDataStore):
                 "langchain-oracledb required for ADB datastore integration. "
                 "Install with: pip install langchain-oracledb"
             ) from e
+
+        self.logger.debug(
+            "Initializing ADB OracleVS backend table=%s chunk_on_write=%s chunking_params=%s",
+            self.table_name,
+            self.chunk_on_write,
+            self.chunking_params,
+        )
 
         distance_strategy = getattr(
             DistanceStrategy,
@@ -122,6 +142,7 @@ class ADB(VectorDataStore):
                 conn=self._connection,
                 params=params,
             )
+        self.logger.debug("ADB OracleVS backend initialized table=%s", self.table_name)
 
     def _ingest_document(self, document: Document, doc_id: str) -> None:
         if self._write_text_splitter is not None:
@@ -144,6 +165,13 @@ class ADB(VectorDataStore):
         return str(value) if value else ""
 
     def search(self, query: str, embedding: list[float], top_k: int) -> list[dict]:
+        self.logger.debug(
+            "ADB search requested table=%s top_k=%s query=%r embedding_dims=%s",
+            self.table_name,
+            top_k,
+            query,
+            len(embedding),
+        )
         docs_and_scores = (
             self._oraclevs.similarity_search_by_vector_with_relevance_scores(  # noqa: E501
                 embedding=embedding,
@@ -162,6 +190,12 @@ class ADB(VectorDataStore):
         ]
 
     def keyword_search(self, query: str, top_k: int) -> list[dict]:
+        self.logger.debug(
+            "ADB keyword search requested table=%s top_k=%s query=%r",
+            self.table_name,
+            top_k,
+            query,
+        )
         self._text_retriever.k = top_k
         docs = self._text_retriever.invoke(query)
         return [
@@ -286,13 +320,15 @@ class ADB(VectorDataStore):
 
         # Try to get sources - handle both metadata (JSON) and source (VARCHAR) columns
         try:
-            cursor.execute(f"""
+            cursor.execute(
+                f"""
                 SELECT JSON_VALUE(metadata, '$.source') as source, COUNT(*) as cnt
                 FROM {self.table_name}
                 GROUP BY JSON_VALUE(metadata, '$.source')
                 ORDER BY cnt DESC
                 FETCH FIRST 10 ROWS ONLY
-            """)
+            """
+            )
             sources = {
                 (row[0] if row[0] is not None else "unknown"): row[1]
                 for row in cursor.fetchall()
@@ -300,13 +336,15 @@ class ADB(VectorDataStore):
         except Exception:
             # Fallback to SOURCE column if metadata doesn't exist
             try:
-                cursor.execute(f"""
+                cursor.execute(
+                    f"""
                     SELECT source, COUNT(*) as cnt
                     FROM {self.table_name}
                     GROUP BY source
                     ORDER BY cnt DESC
                     FETCH FIRST 10 ROWS ONLY
-                """)
+                """
+                )
                 sources = {
                     (row[0] if row[0] is not None else "unknown"): row[1]
                     for row in cursor.fetchall()
