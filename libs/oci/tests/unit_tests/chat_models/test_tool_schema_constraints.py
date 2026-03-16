@@ -1,21 +1,23 @@
 # Copyright (c) 2023 Oracle and/or its affiliates.
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 
-"""Unit tests for tool schema conversion — all 14 scenarios.
+"""Unit tests for tool schema conversion.
 
 Covers nested schemas, anyOf resolution, json_schema_extra constraints,
 Pydantic-native constraints, Python Enums, and backward compatibility
-for both GenericProvider and CohereProvider.
+for both GenericProvider and CohereProvider, including tools with injected
+runtime arguments that cannot be serialized via args_schema.model_json_schema().
 
 See: https://github.com/oracle/langchain-oracle/issues/103
      https://github.com/oracle/langchain-oracle/pull/109#issuecomment-3837468732
 """
 
 from enum import Enum
-from typing import List, Optional
+from typing import Annotated, Callable, List, Optional
 
 import pytest
 from langchain_core.tools import BaseTool, tool
+from langchain_core.tools.base import InjectedToolArg
 from pydantic import BaseModel, Field
 
 from langchain_oci.chat_models.providers.cohere import CohereProvider
@@ -235,6 +237,21 @@ class ConstInput(BaseModel):
 def const_tool(version: str) -> str:
     """Use const version."""
     return version
+
+
+# 15: injected runtime field should be excluded from tool-call schema fallback
+class RuntimeInjectedInput(BaseModel):
+    query: str = Field(description="User query")
+    runtime: Annotated[Callable[..., str], InjectedToolArg]
+
+
+class RuntimeInjectedTool(BaseTool):
+    name: str = "runtime_injected_tool"
+    description: str = "Tool with runtime-only injected argument"
+    args_schema: type[BaseModel] = RuntimeInjectedInput
+
+    def _run(self, query: str, runtime=None) -> str:
+        return query
 
 
 # ---------------------------------------------------------------------------
@@ -463,6 +480,20 @@ def test_backward_compat_simple_tool():
     assert p["count"]["type"] == "integer"
 
 
+@pytest.mark.requires("oci")
+def test_runtime_injected_field_falls_back_to_tool_call_schema():
+    """GenericProvider should ignore runtime-only injected fields."""
+    provider = GenericProvider()
+
+    result = provider.convert_to_oci_tool(RuntimeInjectedTool())
+
+    assert result.name == "runtime_injected_tool"  # type: ignore[attr-defined]
+    properties = result.parameters["properties"]  # type: ignore[attr-defined]
+    assert "query" in properties
+    assert "runtime" not in properties
+    assert result.parameters["required"] == ["query"]  # type: ignore[attr-defined]
+
+
 # ---------------------------------------------------------------------------
 # CohereProvider tests
 # ---------------------------------------------------------------------------
@@ -502,6 +533,16 @@ def test_cohere_range_in_description():
     desc = params["duration_hours"].description
     assert "min=1" in desc
     assert "max=168" in desc
+
+
+@pytest.mark.requires("oci")
+def test_cohere_runtime_injected_field_falls_back_to_tool_args():
+    """CohereProvider should ignore runtime-only injected fields."""
+    params = _cohere_params(RuntimeInjectedTool())
+
+    assert "query" in params
+    assert "runtime" not in params
+    assert params["query"].type == "str"
 
 
 @pytest.mark.requires("oci")

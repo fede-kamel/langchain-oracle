@@ -180,6 +180,97 @@ class TestOpenSearchDataStore:
         assert store.vector_field == "embedding"
         assert store.search_fields == ["title", "content"]
 
+    def test_search_documents_normalizes_text_and_metadata_fields(self) -> None:
+        """Search results should use text/metadata-backed OpenSearch documents."""
+        from langchain_oci.agents.datastores.vectorstores import OpenSearch
+        from langchain_oci.agents.datastores.vectorstores.opensearch import (
+            _OpenSearchVectorStore,
+        )
+
+        store = OpenSearch(
+            endpoint="https://localhost:9200",
+            index_name="test-index",
+            vector_field="vector_field",
+        )
+        store._embedding_model = MagicMock()
+        store._embedding_model.embed_query.return_value = [0.1, 0.2]
+        client = MagicMock()
+        client.search.return_value = {
+            "hits": {
+                "hits": [
+                    {
+                        "_id": "runbook-1",
+                        "_score": 0.91,
+                        "_source": {
+                            "text": "Runbook summary text",
+                            "metadata": {
+                                "title": "Database Remediation Decision",
+                                "content": '{"id":"runbook-1","summary":"Large JSON blob"}',
+                                "source_path": "runbooks/db.yaml",
+                                "category": "database",
+                            },
+                            "vector_field": [0.1, 0.2],
+                        },
+                    }
+                ]
+            }
+        }
+
+        store._vectorstore = _OpenSearchVectorStore(
+            client=client,
+            embedding_model=store._embedding_model,
+            index_name="test-index",
+            vector_field="vector_field",
+        )
+
+        docs_and_scores = store.search_documents_with_scores("database", top_k=1)
+
+        assert len(docs_and_scores) == 1
+        doc, score = docs_and_scores[0]
+        assert doc.page_content == "Runbook summary text"
+        assert doc.metadata["id"] == "runbook-1"
+        assert doc.metadata["title"] == "Database Remediation Decision"
+        assert doc.metadata["source"] == "runbooks/db.yaml"
+        assert doc.metadata["category"] == "database"
+        assert "content" not in doc.metadata
+        assert score == 0.91
+
+    def test_get_normalizes_nested_metadata_content(self) -> None:
+        """Document fetch should not expose raw metadata blobs as content."""
+        from langchain_oci.agents.datastores.vectorstores import OpenSearch
+
+        store = OpenSearch(
+            endpoint="https://localhost:9200",
+            index_name="test-index",
+            vector_field="vector_field",
+        )
+        store._client = MagicMock()
+        store._client.get.return_value = {
+            "found": True,
+            "_id": "doc-123",
+            "_source": {
+                "text": "Clean summary body",
+                "metadata": {
+                    "title": "Source Track Test",
+                    "content": "Original detailed content",
+                    "source_path": "runbooks/source.md",
+                    "source_id": "source-123",
+                },
+                "vector_field": [0.1, 0.2],
+            },
+        }
+
+        doc = store.get("doc-123")
+
+        assert doc == {
+            "id": "doc-123",
+            "title": "Source Track Test",
+            "content": "Clean summary body",
+            "source": "runbooks/source.md",
+            "source_path": "runbooks/source.md",
+            "source_id": "source-123",
+        }
+
 
 @pytest.mark.requires("oci")
 class TestADBDataStore:

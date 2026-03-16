@@ -39,6 +39,7 @@ pytest tests/integration_tests/agents/test_deep_agent_integration.py \
 
 import asyncio
 import os
+import sys
 from typing import Any
 
 import pytest
@@ -46,6 +47,8 @@ import pytest_asyncio
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
+
+from langchain_oci import ChatOCIGenAI, create_deep_research_agent
 
 
 # Sample research tools for testing
@@ -162,6 +165,72 @@ def skip_if_no_deepagents() -> bool:
         return False
     except ImportError:
         return True
+
+
+_SKIP_DEEPAGENTS = sys.version_info < (3, 11) or sys.version_info >= (3, 14)
+
+
+@pytest.mark.requires("langgraph", "deepagents")
+@pytest.mark.skipif(_SKIP_DEEPAGENTS, reason="deepagents requires Python 3.11-3.13")
+@pytest.mark.skipif(skip_if_no_deepagents(), reason="deepagents package not installed")
+class TestDeepAgentCompatibilityIntegration:
+    """Non-network integration tests for deepagents compatibility issues."""
+
+    def test_deepagents_middleware_tool_schema_converts(self) -> None:
+        """Filesystem middleware tools should convert without schema crashes."""
+        from deepagents.middleware.filesystem import FilesystemMiddleware
+
+        model = ChatOCIGenAI(
+            model_id="google.gemini-2.5-pro",
+            service_endpoint="https://inference.generativeai.eu-frankfurt-1.oci.oraclecloud.com",
+            compartment_id="ocid1.compartment.oc1..example",
+            auth_type="API_KEY",
+            model_kwargs={"temperature": 0.1},
+        )
+
+        tool = FilesystemMiddleware().tools[0]
+        converted = model._provider.convert_to_oci_tool(tool)
+
+        assert converted.name == "ls"
+        assert "path" in converted.parameters["properties"]  # type: ignore[attr-defined]
+        assert "runtime" not in converted.parameters["properties"]  # type: ignore[attr-defined]
+
+    def test_helper_output_schema_is_available_without_network(self) -> None:
+        """create_deep_research_agent should expose output_schema safely."""
+        agent = create_deep_research_agent(
+            tools=[search_knowledge_base],
+            model_id="google.gemini-2.5-pro",
+            compartment_id="ocid1.compartment.oc1..example",
+            service_endpoint="https://inference.generativeai.eu-frankfurt-1.oci.oraclecloud.com",
+            auth_type="API_KEY",
+        )
+
+        schema = agent.output_schema
+
+        assert "messages" in schema.model_fields
+        assert "structured_response" in schema.model_fields
+
+    def test_direct_deepagents_output_schema_is_available(self) -> None:
+        """Direct deepagents usage with ChatOCIGenAI should expose output_schema."""
+        from deepagents import create_deep_agent
+
+        model = ChatOCIGenAI(
+            model_id="google.gemini-2.5-pro",
+            service_endpoint="https://inference.generativeai.eu-frankfurt-1.oci.oraclecloud.com",
+            compartment_id="ocid1.compartment.oc1..example",
+            auth_type="API_KEY",
+            model_kwargs={"temperature": 0.1},
+        )
+
+        agent = create_deep_agent(
+            model=model,
+            tools=[search_knowledge_base],
+            system_prompt="You are a research assistant.",
+        )
+
+        schema = agent.output_schema
+
+        assert "messages" in schema.model_fields
 
 
 @pytest.mark.requires("oci", "langgraph", "deepagents")

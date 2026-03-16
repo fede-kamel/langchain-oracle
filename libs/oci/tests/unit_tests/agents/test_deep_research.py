@@ -5,11 +5,13 @@
 
 import sys
 from contextlib import contextmanager
-from typing import Generator
+from typing import Any, Generator
 from unittest.mock import MagicMock, patch
 
 import pytest
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import tool
+from pydantic import BaseModel
 
 from langchain_oci.common.auth import OCIAuthType
 
@@ -54,6 +56,38 @@ _SKIP_DEEPAGENTS_314 = sys.version_info >= (3, 14)
 class TestCreateDeepResearchAgent:
     """Tests for create_deep_research_agent function."""
 
+    def test_output_schema_falls_back_for_upstream_schema_errors(self) -> None:
+        """Agent wrapper should tolerate upstream output_schema failures."""
+        from langchain_oci.agents.deep_research.agent import create_deep_research_agent
+
+        class PydanticForbiddenQualifier(Exception):
+            pass
+
+        class FakeCompiledGraph:
+            output_channels = ("messages", "structured_response")
+            config = None
+
+            @property
+            def output_schema(self) -> type[BaseModel]:
+                return self.get_output_schema()
+
+            def get_name(self, suffix: str) -> str:
+                return f"FakeCompiled{suffix}"
+
+            def get_output_schema(self, config: Any = None) -> type[BaseModel]:
+                raise PydanticForbiddenQualifier("upstream schema bug")
+
+        with patch.dict("os.environ", {"OCI_COMPARTMENT_ID": "test"}):
+            with patch("langchain_oci.agents.deep_research.agent.ChatOCIGenAI"):
+                with mock_deepagents() as mock_create:
+                    mock_create.return_value = FakeCompiledGraph()
+
+                    agent = create_deep_research_agent(tools=[dummy_tool])
+                    schema = agent.output_schema
+
+                    assert "messages" in schema.model_fields
+                    assert "structured_response" in schema.model_fields
+
     def test_creates_agent_with_minimal_args(self) -> None:
         """Test agent creation with just tools and compartment_id."""
         from langchain_oci.agents.deep_research.agent import create_deep_research_agent
@@ -78,6 +112,106 @@ class TestCreateDeepResearchAgent:
                     # Verify create_deep_agent was called
                     mock_create.assert_called_once()
                     assert agent is not None
+
+    def test_datastore_path_uses_lightweight_agent(self) -> None:
+        """Datastore-backed helper should avoid deepagents planning middleware."""
+        from langchain_oci.agents.deep_research.agent import create_deep_research_agent
+
+        fake_store = MagicMock()
+        fake_store.name = "opensearch"
+
+        with patch.dict("os.environ", {"OCI_COMPARTMENT_ID": "test-compartment"}):
+            with patch(
+                "langchain_oci.agents.deep_research.agent.ChatOCIGenAI"
+            ) as mock_llm_class:
+                with patch(
+                    "langchain_oci.agents.deep_research.agent.create_datastore_tools",
+                    return_value=[],
+                ):
+                    with patch(
+                        "langchain_oci.agents.deep_research.agent.create_agent"
+                    ) as mock_create_agent:
+                        mock_llm_class.return_value = MagicMock()
+                        mock_create_agent.return_value = MagicMock()
+
+                        create_deep_research_agent(datastores={"runbooks": fake_store})
+
+                        mock_create_agent.assert_called_once()
+
+    def test_recovers_empty_terminal_message_from_collected_evidence(self) -> None:
+        """Empty final deepagents output should trigger one last synthesis call."""
+        from langchain_oci.agents.deep_research.agent import create_deep_research_agent
+
+        fake_result = {
+            "messages": [
+                HumanMessage(content="Write a long report."),
+                ToolMessage(content="Found Doc ID 1 about databases.", tool_call_id="1"),
+                AIMessage(content=""),
+            ]
+        }
+
+        class FakeCompiledGraph:
+            def invoke(self, input: Any, config: Any = None, **kwargs: Any) -> Any:
+                return fake_result
+
+        with patch.dict("os.environ", {"OCI_COMPARTMENT_ID": "test-compartment"}):
+            with patch(
+                "langchain_oci.agents.deep_research.agent.ChatOCIGenAI"
+            ) as mock_llm_class:
+                with mock_deepagents() as mock_create:
+                    mock_llm = MagicMock()
+                    mock_llm.invoke.return_value = AIMessage(content="Recovered report")
+                    mock_llm_class.return_value = mock_llm
+                    mock_create.return_value = FakeCompiledGraph()
+
+                    agent = create_deep_research_agent(tools=[dummy_tool])
+                    result = agent.invoke({"messages": [HumanMessage(content="Write")]})
+
+                    assert result["messages"][-1].content == "Recovered report"
+                    mock_llm.invoke.assert_called_once()
+
+    def test_rewrites_backend_aliases_to_configured_store_name(self) -> None:
+        """OpenSearch/ADB wording should be rewritten to the concrete store name."""
+        from langchain_oci.agents.deep_research.agent import create_deep_research_agent
+
+        captured: dict[str, Any] = {}
+
+        class FakeCompiledGraph:
+            def invoke(self, input: Any, config: Any = None, **kwargs: Any) -> Any:
+                captured["input"] = input
+                return {"messages": [AIMessage(content="ok")]}
+
+        fake_store = MagicMock()
+        fake_store.name = "opensearch"
+
+        with patch.dict("os.environ", {"OCI_COMPARTMENT_ID": "test-compartment"}):
+            with patch(
+                "langchain_oci.agents.deep_research.agent.ChatOCIGenAI"
+            ) as mock_llm_class:
+                with patch(
+                    "langchain_oci.agents.deep_research.agent.create_datastore_tools",
+                    return_value=[],
+                ):
+                    with patch(
+                        "langchain_oci.agents.deep_research.agent.create_agent"
+                    ) as mock_create_agent:
+                        mock_llm_class.return_value = MagicMock()
+                        mock_create_agent.return_value = FakeCompiledGraph()
+                        agent = create_deep_research_agent(
+                            datastores={"runbooks": fake_store}
+                        )
+                        agent.invoke(
+                            {
+                                "messages": [
+                                    {
+                                        "role": "user",
+                                        "content": "Use only the OpenSearch datastore.",
+                                    }
+                                ]
+                            }
+                        )
+
+        assert "runbooks datastore" in captured["input"]["messages"][0]["content"]
 
     def test_raises_without_compartment_id(self) -> None:
         """Test that error is raised when no compartment_id available."""
@@ -112,6 +246,32 @@ class TestCreateDeepResearchAgent:
 
     def test_passes_system_prompt(self) -> None:
         """Test that system_prompt is passed to create_deep_agent."""
+        from langchain_oci.agents.deep_research.agent import (
+            DATASTORE_RESEARCH_PROMPT,
+            create_deep_research_agent,
+        )
+
+        with patch.dict("os.environ", {"OCI_COMPARTMENT_ID": "test"}):
+            with patch("langchain_oci.agents.deep_research.agent.ChatOCIGenAI"):
+                with patch(
+                    "langchain_oci.agents.deep_research.agent.create_datastore_tools",
+                    return_value=[],
+                ):
+                    with patch(
+                        "langchain_oci.agents.deep_research.agent.create_agent"
+                    ) as mock_create_agent:
+                        create_deep_research_agent(
+                            tools=[dummy_tool],
+                            datastores={"docs": MagicMock()},
+                            system_prompt="You are helpful.",
+                        )
+
+                        call_kwargs = mock_create_agent.call_args.kwargs
+                        assert "You are helpful." in call_kwargs["system_prompt"]
+                        assert DATASTORE_RESEARCH_PROMPT in call_kwargs["system_prompt"]
+
+    def test_datastore_prompt_not_added_without_datastores(self) -> None:
+        """Non-datastore usage should preserve the provided system prompt."""
         from langchain_oci.agents.deep_research.agent import create_deep_research_agent
 
         with patch.dict("os.environ", {"OCI_COMPARTMENT_ID": "test"}):

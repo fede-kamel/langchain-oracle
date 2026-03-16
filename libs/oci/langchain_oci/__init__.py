@@ -3,6 +3,7 @@
 
 from typing import TYPE_CHECKING, Any
 
+from langchain_oci._compat import apply_compat_patches
 from langchain_oci.agents.react.agent import create_oci_agent
 
 if TYPE_CHECKING:
@@ -39,6 +40,8 @@ from langchain_oci.utils.vision import (
     load_image,
     to_data_uri,
 )
+
+apply_compat_patches()
 
 
 def __getattr__(name: str) -> Any:

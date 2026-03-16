@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, Iterable, Optional, Sequence
+from typing import Any, Iterable, Mapping, Optional, Sequence
 
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
@@ -15,6 +15,75 @@ from langchain_core.vectorstores import VectorStore
 from pydantic import ConfigDict
 
 from langchain_oci.agents.datastores.vectorstores.base import VectorDataStore
+
+
+def _coerce_text(value: Any) -> str:
+    if isinstance(value, str):
+        return value.strip()
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
+def _coerce_metadata(value: Any) -> dict[str, Any]:
+    if isinstance(value, Mapping):
+        return dict(value)
+    return {}
+
+
+def _looks_like_json_blob(value: str) -> bool:
+    stripped = value.lstrip()
+    return stripped.startswith("{") or stripped.startswith("[")
+
+
+def _extract_content(source: Mapping[str, Any]) -> str:
+    direct_content = _coerce_text(source.get("content"))
+    if direct_content:
+        return direct_content
+
+    text_content = _coerce_text(source.get("text"))
+    if text_content:
+        return text_content
+
+    metadata = _coerce_metadata(source.get("metadata"))
+    metadata_content = _coerce_text(metadata.get("content"))
+    if metadata_content and not _looks_like_json_blob(metadata_content):
+        return metadata_content
+
+    return metadata_content or text_content
+
+
+def _normalize_source(
+    source: Mapping[str, Any],
+    *,
+    vector_field: str,
+    document_id: str,
+) -> dict[str, Any]:
+    raw_source = dict(source)
+    raw_source.pop(vector_field, None)
+    metadata = _coerce_metadata(raw_source.pop("metadata", None))
+
+    content = _extract_content(source)
+    title = (
+        _coerce_text(raw_source.get("title"))
+        or _coerce_text(metadata.get("title"))
+        or "Untitled"
+    )
+    source_path = (
+        _coerce_text(raw_source.get("source"))
+        or _coerce_text(raw_source.get("source_path"))
+        or _coerce_text(metadata.get("source"))
+        or _coerce_text(metadata.get("source_path"))
+    )
+
+    normalized = {**metadata, **raw_source}
+    normalized.pop("text", None)
+    normalized.pop("content", None)
+    normalized["id"] = document_id
+    normalized["title"] = title
+    normalized["content"] = content
+    normalized["source"] = source_path
+    return normalized
 
 
 class _OpenSearchVectorStore(VectorStore):
@@ -110,11 +179,17 @@ class _OpenSearchVectorStore(VectorStore):
             if not response.get("found"):
                 continue
 
-            source = dict(response.get("_source", {}))
-            source.pop(self._vector_field, None)
-            content = str(source.pop("content", ""))
-            source["id"] = response["_id"]
-            docs.append(Document(page_content=content, metadata=source))
+            normalized = _normalize_source(
+                response.get("_source", {}),
+                vector_field=self._vector_field,
+                document_id=response["_id"],
+            )
+            docs.append(
+                Document(
+                    page_content=str(normalized.pop("content", "")),
+                    metadata=normalized,
+                )
+            )
         return docs
 
     def similarity_search(
@@ -138,12 +213,17 @@ class _OpenSearchVectorStore(VectorStore):
 
         docs_and_scores = []
         for hit in hits:
-            source = dict(hit.get("_source", {}))
-            content = str(source.pop("content", ""))
-            source["id"] = hit["_id"]
+            normalized = _normalize_source(
+                hit.get("_source", {}),
+                vector_field=self._vector_field,
+                document_id=hit["_id"],
+            )
             docs_and_scores.append(
                 (
-                    Document(page_content=content, metadata=source),
+                    Document(
+                        page_content=str(normalized.pop("content", "")),
+                        metadata=normalized,
+                    ),
                     hit.get("_score", 0.0),
                 )
             )
@@ -179,11 +259,18 @@ class _OpenSearchKeywordRetriever(BaseRetriever):
 
         documents = []
         for hit in hits:
-            source = dict(hit.get("_source", {}))
-            content = str(source.pop("content", ""))
-            source["id"] = hit["_id"]
-            source["score"] = hit.get("_score", 0.0)
-            documents.append(Document(page_content=content, metadata=source))
+            normalized = _normalize_source(
+                hit.get("_source", {}),
+                vector_field=self.vector_field,
+                document_id=hit["_id"],
+            )
+            normalized["score"] = hit.get("_score", 0.0)
+            documents.append(
+                Document(
+                    page_content=str(normalized.pop("content", "")),
+                    metadata=normalized,
+                )
+            )
         return documents
 
 
@@ -313,9 +400,11 @@ class OpenSearch(VectorDataStore):
         try:
             response = self._client.get(index=self.index_name, id=str(document_id))
             if response.get("found"):
-                source = response.get("_source", {})
-                source.pop(self.vector_field, None)
-                return {"id": response["_id"], **source}
+                return _normalize_source(
+                    response.get("_source", {}),
+                    vector_field=self.vector_field,
+                    document_id=response["_id"],
+                )
         except Exception:
             pass
         return None

@@ -41,6 +41,7 @@ class ResultFormatter:
     """Formats tool results for LLM consumption with citation guidance."""
 
     CITATION_REMINDER = "IMPORTANT: Cite Doc IDs when using this information."
+    DOCUMENT_METADATA_KEYS = {"category", "type", "runbook_category", "source_path"}
 
     @staticmethod
     def format_search_results(
@@ -90,7 +91,10 @@ class ResultFormatter:
             lines.append(f"Original Source: {result.source}")
 
         for key, value in result.metadata.items():
-            if key not in ("id", "title", "content", "source"):
+            if (
+                key in ResultFormatter.DOCUMENT_METADATA_KEYS
+                and value not in ("", None)
+            ):
                 lines.append(f"{key.replace('_', ' ').title()}: {value}")
 
         lines.extend(

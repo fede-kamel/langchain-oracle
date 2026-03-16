@@ -123,6 +123,54 @@ class TestDeepResearchAgentWithOpenSearch:
         assert len(result["messages"]) > 1
 
 
+@pytest.mark.requires("oci", "oracledb", "langgraph", "deepagents")
+@pytest.mark.skipif(_SKIP_DEEPAGENTS, reason="deepagents requires Python 3.11-3.13")
+@pytest.mark.skipif(not adb_is_reachable(), reason="ADB not configured or reachable")
+class TestDeepResearchAgentWithADB:
+    """Test Deep Research agent with real ADB datastore."""
+
+    @pytest.fixture
+    def embedding_model(self):
+        """Create embedding model matching ADB dimensions."""
+        config = get_adb_config()
+        return create_embedding_model(config["embedding_model"])
+
+    @pytest.fixture
+    def stores(self) -> dict:
+        """Create ADB stores for testing."""
+        return {"research": create_adb_store()}
+
+    def test_deep_agent_with_real_adb(self, stores, embedding_model) -> None:
+        """Test deep research agent with real ADB."""
+        try:
+            import deepagents  # noqa: F401
+        except ImportError:
+            pytest.skip("deepagents not installed")
+
+        from langchain_oci import create_deep_research_agent
+
+        oci_config = get_oci_config()
+        model_id = oci_config.get("deep_research_model") or "google.gemini-2.5-pro"
+
+        agent = create_deep_research_agent(
+            datastores=stores,
+            embedding_model=embedding_model,
+            model_id=model_id,
+            compartment_id=oci_config["compartment_id"],
+            service_endpoint=oci_config["service_endpoint"],
+            auth_type=oci_config["auth_type"],
+            auth_profile=oci_config["auth_profile"],
+            temperature=0.3,
+            middleware=[],
+        )
+
+        question = "What information is available in the datastore?"
+        result = agent.invoke({"messages": [HumanMessage(content=question)]})
+
+        assert "messages" in result
+        assert len(result["messages"]) > 1
+
+
 @pytest.mark.requires("oci", "opensearchpy", "oracledb", "langgraph")
 @pytest.mark.skipif(
     not opensearch_is_reachable() or not adb_is_reachable(),
