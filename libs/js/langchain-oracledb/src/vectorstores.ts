@@ -719,9 +719,13 @@ export class OracleVS extends VectorStore {
       const nonzero: number[] = [];
       if (format === VectorElementFormat.INT8) {
         for (let i = 0; i < vector.length; i += 1) {
-          const rounded = Math.round(vector[i]);
-          if (rounded < -128 || rounded > 127) {
-            throwError(ErrorCode.VECTOR_INVALID_VALUE, "INT8 sparse vector values must be within [-128, 127].");
+          const value = vector[i];
+          const rounded = Math.round(value);
+          if (!Number.isFinite(value) || rounded < -128 || rounded > 127) {
+            throwError(
+              ErrorCode.VECTOR_INVALID_VALUE,
+              "INT8 sparse vector values must be finite and within [-128, 127].",
+            );
           }
           if (rounded !== 0) {
             indices.push(i);
@@ -755,7 +759,7 @@ export class OracleVS extends VectorStore {
 
       return new oracledb.SparseVector({
         values,
-        indices,
+        indices: new Uint32Array(indices),
         numDimensions: vector.length,
       });
     }

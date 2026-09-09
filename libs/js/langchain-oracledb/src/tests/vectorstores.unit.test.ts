@@ -150,6 +150,21 @@ describe("sparse vector element format (#297)", () => {
     );
   });
 
+  test("INT8 sparse vectors reject non-finite values", () => {
+    for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+      expect(() => prepare(makeStore(VectorElementFormat.INT8), [1, bad, 0])).toThrow(
+        /INT8 sparse vector values must be finite/
+      );
+    }
+  });
+
+  test("sparse indices are passed as a Uint32Array", () => {
+    const sv = prepare(makeStore(VectorElementFormat.FLOAT32), [0, 3, 0, 4]);
+
+    expect(sv.indices).toBeInstanceOf(Uint32Array);
+    expect(Array.from(sv.indices)).toEqual([1, 3]);
+  });
+
   test("all-zero sparse vectors produce empty indices and values", () => {
     const sv = prepare(makeStore(VectorElementFormat.FLOAT32), [0, 0, 0]);
 
