@@ -483,6 +483,16 @@ class BaseOracleSaver(BaseCheckpointSaver[str]):
                 param_values[param_name] = value
                 return f"${variable}"
 
+            def _json_path(segments: tuple[str, ...]) -> str:
+                """Render a JSON path whose member names are quoted literals.
+
+                ``("user", "a.b")`` becomes ``$."user"."a.b"`` so a filter key
+                containing a dot addresses a member literally named ``a.b``,
+                matching the LangGraph.js Oracle saver and PostgresSaver rather
+                than being reinterpreted as a nested ``a`` -> ``b`` path.
+                """
+                return "$" + "".join(f'."{segment}"' for segment in segments)
+
             def _is_object_predicate(subject: str) -> str:
                 return " && ".join(
                     f'!({subject}.type() == "{scalar}")'
@@ -541,13 +551,12 @@ class BaseOracleSaver(BaseCheckpointSaver[str]):
                     f"{type(value).__name__}."
                 )
 
-            def _add_leaf_condition(path: str, value: Any) -> None:
+            def _add_leaf_condition(segments: tuple[str, ...], value: Any) -> None:
                 """Append a predicate comparing one JSON path to a leaf value."""
+                path = _json_path(segments)
                 if value is None:
                     # Check for null values
-                    filter_conditions.append(
-                        f"JSON_VALUE(metadata, '$.{path}') IS NULL"
-                    )
+                    filter_conditions.append(f"JSON_VALUE(metadata, '{path}') IS NULL")
                 elif isinstance(value, bool):
                     # Oracle has issues with boolean parameter binding, so use
                     # literal comparison.
@@ -555,14 +564,16 @@ class BaseOracleSaver(BaseCheckpointSaver[str]):
                     # subclass of int
                     bool_str = "true" if value else "false"
                     filter_conditions.append(
-                        f"JSON_VALUE(metadata, '$.{path}') = '{bool_str}'"
+                        f"JSON_VALUE(metadata, '{path}') = '{bool_str}'"
                     )
                 elif isinstance(value, (int, float)):
+                    if isinstance(value, float) and not math.isfinite(value):
+                        raise ValueError("Metadata filter numbers must be finite.")
                     # For numeric values, use JSON_VALUE with RETURNING NUMBER
                     # for proper type comparison
                     param_name = _next_param()
                     filter_conditions.append(
-                        f"JSON_VALUE(metadata, '$.{path}' RETURNING NUMBER) = :{param_name}"
+                        f"JSON_VALUE(metadata, '{path}' RETURNING NUMBER) = :{param_name}"
                     )
                     param_values[param_name] = value
                 elif isinstance(value, list):
@@ -570,7 +581,7 @@ class BaseOracleSaver(BaseCheckpointSaver[str]):
                     # every filter element somewhere (order-insensitive),
                     # matching the LangGraph.js Oracle saver and PostgresSaver.
                     filter_conditions.append(
-                        f"JSON_EXISTS(metadata, '$.{path}?(@.type() == \"array\")')"
+                        f"JSON_EXISTS(metadata, '{path}?(@.type() == \"array\")')"
                     )
                     for element in value:
                         passing: list[str] = []
@@ -580,37 +591,39 @@ class BaseOracleSaver(BaseCheckpointSaver[str]):
                         )
                         filter_conditions.append(
                             f"JSON_EXISTS(metadata, "
-                            f"'$.{path}[*]?({predicate})'{passing_sql})"
+                            f"'{path}[*]?({predicate})'{passing_sql})"
                         )
                 else:
                     # For string values, use direct comparison
                     param_name = _next_param()
                     filter_conditions.append(
-                        f"JSON_VALUE(metadata, '$.{path}') = :{param_name}"
+                        f"JSON_VALUE(metadata, '{path}') = :{param_name}"
                     )
                     param_values[param_name] = value
 
-            def _expand_filter(path: str, value: Any) -> None:
+            def _expand_filter(segments: tuple[str, ...], value: Any) -> None:
                 """Flatten dict filters into per-path containment predicates."""
                 if isinstance(value, dict):
                     if not value:
                         # {} is contained in any object at this path: only
                         # require that the path exists.
-                        filter_conditions.append(f"JSON_EXISTS(metadata, '$.{path}')")
+                        filter_conditions.append(
+                            f"JSON_EXISTS(metadata, '{_json_path(segments)}')"
+                        )
                         return
                     for sub_key, sub_value in value.items():
                         # SECURITY: nested keys become part of the JSON path
                         # expression, so validate them exactly like top-level
                         # keys to prevent JSON path injection attacks
                         self._validate_json_path_key(sub_key)
-                        _expand_filter(f"{path}.{sub_key}", sub_value)
+                        _expand_filter((*segments, sub_key), sub_value)
                     return
-                _add_leaf_condition(path, value)
+                _add_leaf_condition(segments, value)
 
             for key, value in filter.items():
                 # SECURITY: Validate key to prevent JSON path injection attacks
                 self._validate_json_path_key(key)
-                _expand_filter(key, value)
+                _expand_filter((key,), value)
 
             if len(filter_conditions) > 0:
                 wheres.append("(" + " AND ".join(filter_conditions) + ")")

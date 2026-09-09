@@ -14,6 +14,11 @@ from tests.conftest import DEFAULT_CONNECTION_INFO, skip_if_no_oracle
 _connection_pool = None
 
 
+def _jp(dotted: str) -> str:
+    """Expected quoted JSON path for a dotted test key: a.b -> $."a"."b"."""
+    return "$" + "".join(f'."{seg}"' for seg in dotted.split("."))
+
+
 def get_connection_pool():
     """Get or create a connection pool for real execution checks."""
     global _connection_pool
@@ -177,9 +182,11 @@ def _expected_filter_param_count(filter_dict) -> int:
 
 def _assert_list_containment(where_clause, param_values, path, value) -> None:
     """Assert containment predicates for list filter values (issue #296)."""
-    assert f"JSON_EXISTS(metadata, '$.{path}?(@.type() == \"array\")')" in where_clause
+    assert (
+        f"JSON_EXISTS(metadata, '{_jp(path)}?(@.type() == \"array\")')" in where_clause
+    )
     if value:
-        assert f"'$.{path}[*]?(" in where_clause
+        assert f"'{_jp(path)}[*]?(" in where_clause
     for element in value:
         if isinstance(element, (dict, list)):
             continue  # nested elements are covered by their bound leaf params
@@ -191,29 +198,30 @@ def _assert_list_containment(where_clause, param_values, path, value) -> None:
 def _assert_containment_paths(where_clause, param_values, path, value) -> None:
     """Assert flattened containment predicates for dict filter values."""
     if not value:
-        assert f"JSON_EXISTS(metadata, '$.{path}')" in where_clause
+        assert f"JSON_EXISTS(metadata, '{_jp(path)}')" in where_clause
         return
     for sub_key, sub_value in value.items():
         sub_path = f"{path}.{sub_key}"
         if isinstance(sub_value, dict):
             _assert_containment_paths(where_clause, param_values, sub_path, sub_value)
         elif sub_value is None:
-            assert f"JSON_VALUE(metadata, '$.{sub_path}') IS NULL" in where_clause
+            assert f"JSON_VALUE(metadata, '{_jp(sub_path)}') IS NULL" in where_clause
         elif isinstance(sub_value, bool):
             bool_str = "true" if sub_value else "false"
             assert (
-                f"JSON_VALUE(metadata, '$.{sub_path}') = '{bool_str}'" in where_clause
+                f"JSON_VALUE(metadata, '{_jp(sub_path)}') = '{bool_str}'"
+                in where_clause
             )
         elif isinstance(sub_value, int | float):
             assert (
-                f"JSON_VALUE(metadata, '$.{sub_path}' RETURNING NUMBER) ="
+                f"JSON_VALUE(metadata, '{_jp(sub_path)}' RETURNING NUMBER) ="
                 in where_clause
             )
             assert sub_value in param_values.values()
         elif isinstance(sub_value, list):
             _assert_list_containment(where_clause, param_values, sub_path, sub_value)
         else:
-            assert f"JSON_VALUE(metadata, '$.{sub_path}') =" in where_clause
+            assert f"JSON_VALUE(metadata, '{_jp(sub_path)}') =" in where_clause
             assert sub_value in param_values.values()
 
 
@@ -252,10 +260,12 @@ def _assert_search_where_shape(saver, config, filter_dict, before) -> None:
 
         for key, value in filter_dict.items():
             if value is None:
-                assert f"JSON_VALUE(metadata, '$.{key}') IS NULL" in where_clause
+                assert f"JSON_VALUE(metadata, '{_jp(key)}') IS NULL" in where_clause
             elif isinstance(value, bool):
                 bool_str = "true" if value else "false"
-                assert f"JSON_VALUE(metadata, '$.{key}') = '{bool_str}'" in where_clause
+                assert (
+                    f"JSON_VALUE(metadata, '{_jp(key)}') = '{bool_str}'" in where_clause
+                )
             elif isinstance(value, list):
                 _assert_list_containment(where_clause, param_values, key, value)
             elif isinstance(value, dict):
@@ -263,12 +273,12 @@ def _assert_search_where_shape(saver, config, filter_dict, before) -> None:
                 _assert_containment_paths(where_clause, param_values, key, value)
             elif isinstance(value, int | float):
                 assert (
-                    f"JSON_VALUE(metadata, '$.{key}' RETURNING NUMBER) ="
+                    f"JSON_VALUE(metadata, '{_jp(key)}' RETURNING NUMBER) ="
                     in where_clause
                 )
                 assert value in param_values.values()
             else:
-                assert f"JSON_VALUE(metadata, '$.{key}') =" in where_clause
+                assert f"JSON_VALUE(metadata, '{_jp(key)}') =" in where_clause
                 assert value in param_values.values()
 
     if before:

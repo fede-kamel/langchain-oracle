@@ -33,7 +33,7 @@ def _where(filter_):
 
 def test_nested_dict_flattens_to_json_paths() -> None:
     where, params = _where({"nested": {"b": {"c": True}}})
-    assert "JSON_VALUE(metadata, '$.nested.b.c') = 'true'" in where
+    assert 'JSON_VALUE(metadata, \'$."nested"."b"."c"\') = \'true\'' in where
     assert "JSON_EQUAL" not in where
 
 
@@ -41,9 +41,9 @@ def test_nested_leaf_types_use_typed_predicates() -> None:
     where, params = _where(
         {"level": {"depth": 3}, "meta": {"name": "run-1"}, "gone": {"x": None}}
     )
-    assert "JSON_VALUE(metadata, '$.level.depth' RETURNING NUMBER)" in where
-    assert "JSON_VALUE(metadata, '$.meta.name') = :" in where
-    assert "JSON_VALUE(metadata, '$.gone.x') IS NULL" in where
+    assert 'JSON_VALUE(metadata, \'$."level"."depth"\' RETURNING NUMBER)' in where
+    assert 'JSON_VALUE(metadata, \'$."meta"."name"\') = :' in where
+    assert 'JSON_VALUE(metadata, \'$."gone"."x"\') IS NULL' in where
     assert 3 in params.values()
     assert "run-1" in params.values()
 
@@ -51,10 +51,12 @@ def test_nested_leaf_types_use_typed_predicates() -> None:
 def test_lists_use_containment_semantics() -> None:
     where, params = _where({"tags": [1, 2], "nested": {"items": ["a"]}})
     assert "JSON_EQUAL" not in where
-    assert "JSON_EXISTS(metadata, '$.tags?(@.type() == \"array\")')" in where
-    assert '\'$.tags[*]?(@.type() == "number" && @ == $FILTER_KEY_' in where
-    assert "JSON_EXISTS(metadata, '$.nested.items?(@.type() == \"array\")')" in where
-    assert '\'$.nested.items[*]?(@.type() == "string" && @ == $FILTER_KEY_' in where
+    assert 'JSON_EXISTS(metadata, \'$."tags"?(@.type() == "array")\')' in where
+    assert '\'$."tags"[*]?(@.type() == "number" && @ == $FILTER_KEY_' in where
+    assert (
+        'JSON_EXISTS(metadata, \'$."nested"."items"?(@.type() == "array")\')' in where
+    )
+    assert '\'$."nested"."items"[*]?(@.type() == "string" && @ == $FILTER_KEY_' in where
     assert 1 in params.values()
     assert 2 in params.values()
     assert "a" in params.values()
@@ -88,7 +90,7 @@ def test_list_non_finite_numbers_are_rejected() -> None:
 
 def test_empty_dict_requires_path_existence() -> None:
     where, _ = _where({"empty": {}})
-    assert "JSON_EXISTS(metadata, '$.empty')" in where
+    assert "JSON_EXISTS(metadata, '$.\"empty\"')" in where
 
 
 def test_nested_keys_are_validated_against_path_injection() -> None:
@@ -96,11 +98,35 @@ def test_nested_keys_are_validated_against_path_injection() -> None:
         _where({"nested": {"bad'key": 1}})
 
 
+def test_dotted_keys_are_literal_member_names() -> None:
+    """A key containing a dot addresses a member literally named ``a.b``.
+
+    Every path segment is rendered as a quoted member name, so dotted keys are
+    not reinterpreted as nested paths -- at the top level, inside nested dicts,
+    and inside list elements alike. This matches the LangGraph.js Oracle saver
+    and PostgresSaver.
+    """
+    where, params = _where({"a.b": 1, "user": {"x.y": "v", "tags": [{"k.k": 2}]}})
+    assert "JSON_VALUE(metadata, '$.\"a.b\"' RETURNING NUMBER) = :" in where
+    assert 'JSON_VALUE(metadata, \'$."user"."x.y"\') = :' in where
+    assert '@."k.k"' in where
+    assert "'$.a.b'" not in where and "$.user.x.y" not in where
+    assert 1 in params.values() and "v" in params.values() and 2 in params.values()
+
+
+def test_top_level_non_finite_numbers_are_rejected() -> None:
+    for bad in (float("nan"), float("inf"), float("-inf")):
+        with pytest.raises(ValueError, match="must be finite"):
+            _where({"score": bad})
+        with pytest.raises(ValueError, match="must be finite"):
+            _where({"nested": {"score": bad}})
+
+
 def test_scalar_filters_unchanged() -> None:
     where, params = _where({"source": "loop", "step": 2, "active": True})
-    assert "JSON_VALUE(metadata, '$.source') = :" in where
-    assert "JSON_VALUE(metadata, '$.step' RETURNING NUMBER) = :" in where
-    assert "JSON_VALUE(metadata, '$.active') = 'true'" in where
+    assert "JSON_VALUE(metadata, '$.\"source\"') = :" in where
+    assert "JSON_VALUE(metadata, '$.\"step\"' RETURNING NUMBER) = :" in where
+    assert "JSON_VALUE(metadata, '$.\"active\"') = 'true'" in where
 
 
 # ---------------------------------------------------------------------------
