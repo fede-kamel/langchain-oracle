@@ -33,7 +33,10 @@ def _where(filter_):
 
 def test_nested_dict_flattens_to_json_paths() -> None:
     where, params = _where({"nested": {"b": {"c": True}}})
-    assert 'JSON_VALUE(metadata, \'$."nested"."b"."c"\') = \'true\'' in where
+    assert (
+        'JSON_EXISTS(metadata, \'$."nested"."b"."c"?(@.type() == "boolean" && @ == true)\')'
+        in where
+    )
     assert "JSON_EQUAL" not in where
 
 
@@ -41,9 +44,12 @@ def test_nested_leaf_types_use_typed_predicates() -> None:
     where, params = _where(
         {"level": {"depth": 3}, "meta": {"name": "run-1"}, "gone": {"x": None}}
     )
-    assert 'JSON_VALUE(metadata, \'$."level"."depth"\' RETURNING NUMBER)' in where
-    assert 'JSON_VALUE(metadata, \'$."meta"."name"\') = :' in where
-    assert 'JSON_VALUE(metadata, \'$."gone"."x"\') IS NULL' in where
+    assert '\'$."level"."depth"?(@.type() == "number" && @ == $FILTER_KEY_' in where
+    assert '\'$."meta"."name"?(@.type() == "string" && @ == $FILTER_KEY_' in where
+    assert (
+        'JSON_EXISTS(metadata, \'$."gone"."x"?(@.type() == "null" && @ == null)\')'
+        in where
+    )
     assert 3 in params.values()
     assert "run-1" in params.values()
 
@@ -90,7 +96,7 @@ def test_list_non_finite_numbers_are_rejected() -> None:
 
 def test_empty_dict_requires_path_existence() -> None:
     where, _ = _where({"empty": {}})
-    assert "JSON_EXISTS(metadata, '$.\"empty\"')" in where
+    assert 'JSON_EXISTS(metadata, \'$."empty"?(!(@.type() == "array")' in where
 
 
 def test_nested_keys_are_validated_against_path_injection() -> None:
@@ -107,8 +113,8 @@ def test_dotted_keys_are_literal_member_names() -> None:
     and PostgresSaver.
     """
     where, params = _where({"a.b": 1, "user": {"x.y": "v", "tags": [{"k.k": 2}]}})
-    assert "JSON_VALUE(metadata, '$.\"a.b\"' RETURNING NUMBER) = :" in where
-    assert 'JSON_VALUE(metadata, \'$."user"."x.y"\') = :' in where
+    assert '\'$."a.b"?(@.type() == "number" && @ == $FILTER_KEY_' in where
+    assert '\'$."user"."x.y"?(@.type() == "string" && @ == $FILTER_KEY_' in where
     assert '@."k.k"' in where
     assert "'$.a.b'" not in where and "$.user.x.y" not in where
     assert 1 in params.values() and "v" in params.values() and 2 in params.values()
@@ -122,11 +128,47 @@ def test_top_level_non_finite_numbers_are_rejected() -> None:
             _where({"nested": {"score": bad}})
 
 
+def test_scalar_leaves_are_type_strict() -> None:
+    """Scalars use the same typed predicate as list elements.
+
+    A boolean filter must not match the strings "true"/"false", a numeric
+    filter must not match numeric strings, and a string filter must not match
+    numbers -- matching PostgresSaver's ``@>`` and the LangGraph.js saver.
+    """
+    where, params = _where({"flag": True, "n": 5, "s": "5", "e": ""})
+    assert (
+        'JSON_EXISTS(metadata, \'$."flag"?(@.type() == "boolean" && @ == true)\')'
+        in where
+    )
+    assert '\'$."n"?(@.type() == "number" && @ == $FILTER_KEY_' in where
+    assert '\'$."s"?(@.type() == "string" && @ == $FILTER_KEY_' in where
+    assert 'JSON_EXISTS(metadata, \'$."e"?(@.type() == "string" && @ == "")\')' in where
+    assert "JSON_VALUE" not in where
+    assert 5 in params.values() and "5" in params.values()
+
+
+def test_null_filter_requires_explicit_json_null() -> None:
+    where, params = _where({"gone": None})
+    assert (
+        'JSON_EXISTS(metadata, \'$."gone"?(@.type() == "null" && @ == null)\')' in where
+    )
+    assert "IS NULL" not in where
+    assert params == {}
+
+
+def test_empty_dict_matches_objects_only() -> None:
+    where, _ = _where({"obj": {}})
+    assert '$."obj"?(!(@.type() == "array") && !(@.type() == "string")' in where
+
+
 def test_scalar_filters_unchanged() -> None:
     where, params = _where({"source": "loop", "step": 2, "active": True})
-    assert "JSON_VALUE(metadata, '$.\"source\"') = :" in where
-    assert "JSON_VALUE(metadata, '$.\"step\"' RETURNING NUMBER) = :" in where
-    assert "JSON_VALUE(metadata, '$.\"active\"') = 'true'" in where
+    assert '\'$."source"?(@.type() == "string" && @ == $FILTER_KEY_' in where
+    assert '\'$."step"?(@.type() == "number" && @ == $FILTER_KEY_' in where
+    assert (
+        'JSON_EXISTS(metadata, \'$."active"?(@.type() == "boolean" && @ == true)\')'
+        in where
+    )
 
 
 # ---------------------------------------------------------------------------

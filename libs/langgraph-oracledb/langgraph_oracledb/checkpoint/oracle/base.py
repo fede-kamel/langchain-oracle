@@ -500,7 +500,10 @@ class BaseOracleSaver(BaseCheckpointSaver[str]):
                 )
 
             def _element_predicate(subject: str, value: Any, passing: list[str]) -> str:
-                """JSON-path predicate matching one array element by containment.
+                """JSON-path predicate matching one value by containment.
+
+                Used for every filter leaf (top-level, nested and array
+                elements) so all depths share one set of typing rules.
 
                 Mirrors the LangGraph.js Oracle saver's filter compiler so both
                 languages match the same rows: scalars compare by type and
@@ -515,9 +518,7 @@ class BaseOracleSaver(BaseCheckpointSaver[str]):
                     return f'{subject}.type() == "boolean" && {subject} == {literal}'
                 if isinstance(value, (int, float)):
                     if isinstance(value, float) and not math.isfinite(value):
-                        raise ValueError(
-                            "Metadata filter numbers inside lists must be finite."
-                        )
+                        raise ValueError("Metadata filter numbers must be finite.")
                     variable = _bound_path_variable(value, passing)
                     return f'{subject}.type() == "number" && {subject} == {variable}'
                 if isinstance(value, str):
@@ -552,34 +553,22 @@ class BaseOracleSaver(BaseCheckpointSaver[str]):
                 )
 
             def _add_leaf_condition(segments: tuple[str, ...], value: Any) -> None:
-                """Append a predicate comparing one JSON path to a leaf value."""
+                """Append a containment predicate for one JSON path and leaf value.
+
+                Every leaf is matched with the same type-checked JSON-path
+                predicate the list-element path uses, so a filter value only
+                matches a stored value of the same JSON type: ``True`` matches
+                the JSON boolean ``true`` but not the string ``"true"``,
+                ``None`` matches an explicit JSON ``null`` but not an absent
+                key, ``5`` matches the number ``5`` but not the string ``"5"``,
+                and ``{}`` matches any object but no scalar. This mirrors
+                PostgresSaver's ``metadata @> filter`` and the LangGraph.js
+                Oracle saver.
+                """
                 path = _json_path(segments)
-                if value is None:
-                    # Check for null values
-                    filter_conditions.append(f"JSON_VALUE(metadata, '{path}') IS NULL")
-                elif isinstance(value, bool):
-                    # Oracle has issues with boolean parameter binding, so use
-                    # literal comparison.
-                    # NOTE: Must check bool BEFORE int/float since bool is a
-                    # subclass of int
-                    bool_str = "true" if value else "false"
-                    filter_conditions.append(
-                        f"JSON_VALUE(metadata, '{path}') = '{bool_str}'"
-                    )
-                elif isinstance(value, (int, float)):
-                    if isinstance(value, float) and not math.isfinite(value):
-                        raise ValueError("Metadata filter numbers must be finite.")
-                    # For numeric values, use JSON_VALUE with RETURNING NUMBER
-                    # for proper type comparison
-                    param_name = _next_param()
-                    filter_conditions.append(
-                        f"JSON_VALUE(metadata, '{path}' RETURNING NUMBER) = :{param_name}"
-                    )
-                    param_values[param_name] = value
-                elif isinstance(value, list):
+                if isinstance(value, list):
                     # Containment: the stored value must be an array holding
-                    # every filter element somewhere (order-insensitive),
-                    # matching the LangGraph.js Oracle saver and PostgresSaver.
+                    # every filter element somewhere (order-insensitive).
                     filter_conditions.append(
                         f"JSON_EXISTS(metadata, '{path}?(@.type() == \"array\")')"
                     )
@@ -593,23 +582,21 @@ class BaseOracleSaver(BaseCheckpointSaver[str]):
                             f"JSON_EXISTS(metadata, "
                             f"'{path}[*]?({predicate})'{passing_sql})"
                         )
-                else:
-                    # For string values, use direct comparison
-                    param_name = _next_param()
-                    filter_conditions.append(
-                        f"JSON_VALUE(metadata, '{path}') = :{param_name}"
-                    )
-                    param_values[param_name] = value
+                    return
+                passing = []
+                predicate = _element_predicate("@", value, passing)
+                passing_sql = f" PASSING {', '.join(passing)}" if passing else ""
+                filter_conditions.append(
+                    f"JSON_EXISTS(metadata, '{path}?({predicate})'{passing_sql})"
+                )
 
             def _expand_filter(segments: tuple[str, ...], value: Any) -> None:
                 """Flatten dict filters into per-path containment predicates."""
                 if isinstance(value, dict):
                     if not value:
-                        # {} is contained in any object at this path: only
-                        # require that the path exists.
-                        filter_conditions.append(
-                            f"JSON_EXISTS(metadata, '{_json_path(segments)}')"
-                        )
+                        # {} is contained in any object at this path, and only
+                        # in an object: scalars and arrays do not match.
+                        _add_leaf_condition(segments, value)
                         return
                     for sub_key, sub_value in value.items():
                         # SECURITY: nested keys become part of the JSON path
