@@ -69,6 +69,8 @@ async def test_sql_hybrid_tags_search_but_not_rowid_fetch(mode, asynchronous):
     store.client = object()
     store.table_name = '"DOCS"'
     store.embedding_function = DeterministicFakeEmbedding(size=3)
+    store.backend = "sql"
+    store._vecdb = None
     retriever = OracleHybridSearchRetriever(
         vector_store=store, idx_name="HVI", search_mode=mode
     )
